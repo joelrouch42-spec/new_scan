@@ -1,0 +1,13 @@
+{
+  "mode": "backtest",
+  "data_folder": "data",
+  "config_file": "config.txt",
+  "backtest": {
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "data_source": "yahoo"
+  },
+  "realtime": {
+    "update_interval_seconds": 60
+  }
+}
