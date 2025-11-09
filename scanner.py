@@ -7,14 +7,20 @@ import pandas as pd
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
 import time
+import argparse
 
 
 class StockScanner:
-    def __init__(self, settings_file):
+    def __init__(self, settings_file, mode_override=None):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
-        self.mode = self.settings['mode']
+        # Mode override de ligne de commande est prioritaire
+        if mode_override:
+            self.mode = mode_override
+        else:
+            self.mode = self.settings['mode']
+
         self.data_folder = self.settings['data_folder']
         self.config_file = self.settings['config_file']
 
@@ -208,5 +214,18 @@ class StockScanner:
 
 
 if __name__ == '__main__':
-    scanner = StockScanner('settings.json')
+    parser = argparse.ArgumentParser(description='Scanner de stocks')
+    parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest (override settings.json)')
+    parser.add_argument('--realtime', action='store_true', help='Lance en mode temps réel (override settings.json)')
+
+    args = parser.parse_args()
+
+    # Détermine le mode (ligne de commande prioritaire)
+    mode_override = None
+    if args.backtest:
+        mode_override = 'backtest'
+    elif args.realtime:
+        mode_override = 'realtime'
+
+    scanner = StockScanner('settings.json', mode_override=mode_override)
     scanner.run()
