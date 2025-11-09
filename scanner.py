@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
+from zoneinfo import ZoneInfo
 
 
 class StockScanner:
@@ -56,7 +57,7 @@ class StockScanner:
             else:
                 days_needed = candle_nb * 2  # Marge par défaut
 
-            end_date = datetime.now()
+            end_date = datetime.now(ZoneInfo('America/New_York'))
             start_date = end_date - timedelta(days=days_needed)
 
             df = ticker.history(start=start_date, end=end_date, interval=interval)
@@ -90,7 +91,7 @@ class StockScanner:
         print(f"Interval: {interval}")
         print(f"Nombre de symboles: {len(watchlist)}\n")
 
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
         for item in watchlist:
             symbol = item['symbol']
