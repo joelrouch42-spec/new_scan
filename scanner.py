@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 
@@ -45,7 +45,21 @@ class StockScanner:
         try:
             print(f"Téléchargement des données pour {symbol}...")
             ticker = yf.Ticker(symbol)
-            df = ticker.history(period="max", interval=interval)
+
+            # Calculer la période nécessaire avec marge de sécurité
+            if interval == '1d':
+                days_needed = int(candle_nb * 1.6)  # Marge pour weekends/jours fériés
+            elif interval == '1h':
+                days_needed = int(candle_nb / 6.5)  # ~6.5h de trading par jour
+            elif interval == '1wk':
+                days_needed = candle_nb * 7 * 2
+            else:
+                days_needed = candle_nb * 2  # Marge par défaut
+
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days_needed)
+
+            df = ticker.history(start=start_date, end=end_date, interval=interval)
 
             if df.empty:
                 print(f"Aucune donnée disponible pour {symbol}")
