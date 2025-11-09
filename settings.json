@@ -3,8 +3,8 @@
   "data_folder": "data",
   "config_file": "config.txt",
   "backtest": {
-    "start_date": "2024-01-01",
-    "end_date": "2024-12-31",
+    "candle_nb": 120,
+    "interval": "1d",
     "data_source": "yahoo"
   },
   "realtime": {
