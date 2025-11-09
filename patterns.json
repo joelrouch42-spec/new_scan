@@ -1,0 +1,22 @@
+{
+  "patterns": [
+    {
+      "name": "breakouts",
+      "enabled": true,
+      "description": "Détection des cassures de support/résistance"
+    }
+  ],
+  "support_resistance": {
+    "order": 5,
+    "cluster_threshold": 0.02,
+    "description": "order: nombre de bougies de chaque côté pour détecter un extremum local. cluster_threshold: seuil de regroupement des niveaux proches (2%)"
+  },
+  "breakout": {
+    "min_volume_ratio": 1.5,
+    "description": "min_volume_ratio: ratio minimum de volume pour valider un breakout"
+  },
+  "output": {
+    "patterns_folder": "patterns",
+    "description": "Dossier où sauvegarder les patterns détectés"
+  }
+}
