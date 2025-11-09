@@ -11,16 +11,11 @@ import argparse
 
 
 class StockScanner:
-    def __init__(self, settings_file, mode_override=None):
+    def __init__(self, settings_file, is_backtest=False):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
-        # Mode override de ligne de commande est prioritaire, sinon mode réel par défaut
-        if mode_override:
-            self.mode = mode_override
-        else:
-            self.mode = 'realtime'
-
+        self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = self.settings['config_file']
 
@@ -215,17 +210,8 @@ class StockScanner:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scanner de stocks')
-    parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest (override settings.json)')
-    parser.add_argument('--realtime', action='store_true', help='Lance en mode temps réel (override settings.json)')
-
+    parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     args = parser.parse_args()
 
-    # Détermine le mode (ligne de commande prioritaire)
-    mode_override = None
-    if args.backtest:
-        mode_override = 'backtest'
-    elif args.realtime:
-        mode_override = 'realtime'
-
-    scanner = StockScanner('settings.json', mode_override=mode_override)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest)
     scanner.run()
