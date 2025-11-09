@@ -29,28 +29,16 @@ class StockScanner:
                         symbols.append({'symbol': symbol, 'provider': provider})
         return symbols
 
-    def get_data_filename(self, symbol, candle_nb, interval):
+    def get_data_filename(self, symbol, candle_nb, interval, date):
         """Génère le nom du fichier de données"""
         return os.path.join(
             self.data_folder,
-            f"{symbol}_{candle_nb}_{interval}.csv"
+            f"{date}_{symbol}_{candle_nb}_{interval}.csv"
         )
 
-    def check_file_date(self, filepath, expected_date):
-        """Vérifie si le fichier existe et si la dernière date correspond"""
-        if not os.path.exists(filepath):
-            return False
-
-        try:
-            df = pd.read_csv(filepath)
-            if len(df) > 0 and 'Date' in df.columns:
-                file_last_date = df['Date'].iloc[-1]
-                return file_last_date == expected_date
-        except Exception as e:
-            print(f"Erreur lors de la vérification du fichier {filepath}: {e}")
-            return False
-
-        return False
+    def check_file_exists(self, filepath):
+        """Vérifie si le fichier existe"""
+        return os.path.exists(filepath)
 
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
@@ -88,14 +76,14 @@ class StockScanner:
         print(f"Interval: {interval}")
         print(f"Nombre de symboles: {len(watchlist)}\n")
 
+        today = datetime.now().strftime('%Y-%m-%d')
+
         for item in watchlist:
             symbol = item['symbol']
-            filename = self.get_data_filename(symbol, candle_nb, interval)
+            filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
-            today = datetime.now().strftime('%Y-%m-%d')
-
-            if self.check_file_date(filename, today):
-                print(f"Skip {symbol} - fichier déjà existant avec la bonne date")
+            if self.check_file_exists(filename):
+                print(f"Skip {symbol} - fichier déjà existant")
                 continue
 
             df = self.download_yahoo_data(symbol, candle_nb, interval)
