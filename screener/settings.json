@@ -1,0 +1,135 @@
+{
+  "historique": {
+    "nb_bougies":120,
+    "description": "Nombre de bougies historiques à analyser au démarrage"
+  },
+  "interface": {
+    "refresh_seconds": 60,
+    "chart_height": 900,
+    "description": "Paramètres interface utilisateur"
+  },
+  "catalyst": {
+    "multiplier": 1.5,
+    "min_threshold": 1.0,
+    "news_days": 1,
+    "recent_alerts_days": 7,
+    "catalyst_count_days": 30,
+    "catalyst_log_days": 365,
+    "description": "Paramètres de détection des catalyseurs"
+  },
+  "data": {
+    "days_fetch": 150,
+    "period_candles": 120,
+    "description": "period_candles: Ce qu'il ya dans le graphe"
+  },
+  "analysis": {
+    "avg_candles": 30,
+    "volume_min_candles": 5,
+    "volume_spike_threshold": 1.5,
+    "description": "Paramètres d'analyse technique"
+  },
+  "market": {
+    "open_hour": 9,
+    "open_minute": 30,
+    "close_hour": 16,
+    "close_minute": 0,
+    "description": "Heures d'ouverture marché US (EST)"
+  },
+  "api": {
+    "timeout_seconds": 30,
+    "description": "Paramètres API externes"
+  },
+  "support_resistance": {
+    "order": 5,
+    "cluster_threshold": 0.02,
+    "line_width": 2,
+    "line_opacity": 0.6,
+    "description": "Paramètres support/résistance"
+  },
+  "breakout": {
+    "min_move_percent": 1.0,
+    "volume_spike_threshold": 1.5,
+    "description": "Seuils pour alertes breakout - min_move_percent: mouvement minimum en %, volume_spike_threshold: volume requis vs moyenne"
+  },
+  "server": {
+    "port": 8050,
+    "host": "0.0.0.0",
+    "debug": false,
+    "description": "Paramètres serveur web"
+  },
+  "logging": {
+    "debug": false,
+    "alerts_only": true,
+    "description": "Contrôle des printouts - alerts_only=true pour voir que les alertes et erreurs"
+  },
+  "debug": {
+    "candle_offset": 10,
+    "replay_mode": true,
+    "description": "candle_offset: 0=dernière bougie, 1=avant-dernière, 2=il y a 2 bougies, etc. replay_mode=false utilise IBKR en temps réel"
+  },
+  "signal_filters": {
+    "active_profile": "no_filters",
+    "profiles": {
+      "no_filters": {
+        "enabled": false,
+        "description": "AUCUN FILTRE - toutes les alertes passent"
+      },
+      "breakouts_only": {
+        "enabled": true,
+        "allowed_breakout_types": ["resistance_breakout", "support_breakdown"],
+        "allowed_catalyst_types": [],
+        "blocked_catalyst_types": ["unknown", "technical", "earnings", "contract"],
+        "min_change_percent": 1.0,
+        "require_volume_spike": true,
+        "description": "Que les breakouts techniques avec volume"
+      },
+      "high_confidence": {
+        "enabled": true,
+        "allowed_catalyst_types": ["earnings", "fda", "acquisition"],
+        "blocked_catalyst_types": ["unknown", "technical", "macro"],
+        "min_reliability": "high",
+        "min_change_percent": 2.5,
+        "require_volume_spike": true,
+        "description": "Signaux très fiables uniquement"
+      },
+      "balanced": {
+        "enabled": true,
+        "allowed_breakout_types": ["resistance_breakout", "support_breakdown"],
+        "allowed_catalyst_types": ["earnings", "contract", "fda", "acquisition"],
+        "blocked_catalyst_types": ["unknown", "technical"],
+        "min_reliability": "medium", 
+        "min_change_percent": 1.5,
+        "require_volume_spike": true,
+        "allowed_sectors": ["tech", "biotech", "finance", "crypto"],
+        "description": "Équilibre qualité/quantité - config recommandée"
+      },
+      "tech_focus": {
+        "enabled": true,
+        "allowed_sectors": ["tech"],
+        "min_change_percent": 2.0,
+        "require_volume_spike": true,
+        "description": "Tech stocks uniquement avec mouvements >2%"
+      },
+      "earnings_season": {
+        "enabled": true,
+        "allowed_catalyst_types": ["earnings"],
+        "blocked_catalyst_types": ["unknown", "technical"],
+        "min_reliability": "medium",
+        "min_change_percent": 3.0,
+        "description": "Spécial earnings season - gros mouvements uniquement"
+      }
+    },
+    "// COMMENT": "Changer 'active_profile' pour switcher entre configs",
+    "// PROFILES": "no_filters, breakouts_only, high_confidence, balanced, tech_focus, earnings_season"
+  },
+  "chart": {
+    "margin_top": 50,
+    "margin_bottom": 50,
+    "margin_left": 50,
+    "margin_right": 50,
+    "current_price_line_color": "yellow",
+    "current_price_line_width": 2,
+    "current_price_line_opacity": 0.8,
+    "description": "Paramètres graphiques"
+  }
+}

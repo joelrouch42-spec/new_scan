@@ -1,0 +1,6 @@
+.project
+__pycache__/
+scanner.log
+scanner.pid
+venv/
+
