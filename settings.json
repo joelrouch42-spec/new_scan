@@ -10,7 +10,7 @@
   "realtime": {
     "update_interval_seconds": 60,
     "ibkr_host": "127.0.0.1",
-    "ibkr_port": 7497,
+    "ibkr_port": 4001,
     "ibkr_client_id": 2
   }
 }
