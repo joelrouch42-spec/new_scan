@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 from zoneinfo import ZoneInfo
+from ib_insync import IB, Stock
+import time
 
 
 class StockScanner:
@@ -106,10 +108,94 @@ class StockScanner:
                 df.to_csv(filename, index=False)
                 print(f"Données sauvegardées: {filename}\n")
 
+    def connect_ibkr(self):
+        """Connecte à Interactive Brokers"""
+        realtime_config = self.settings['realtime']
+        host = realtime_config['ibkr_host']
+        port = realtime_config['ibkr_port']
+        client_id = realtime_config['ibkr_client_id']
+
+        try:
+            ib = IB()
+            ib.connect(host, port, clientId=client_id)
+            print(f"Connecté à IBKR {host}:{port}")
+            return ib
+        except Exception as e:
+            print(f"Erreur connexion IBKR: {e}")
+            return None
+
+    def get_last_close_ibkr(self, ib, symbol):
+        """Récupère le close de la dernière bougie depuis IBKR"""
+        try:
+            contract = Stock(symbol, 'SMART', 'USD')
+            qualified = ib.qualifyContracts(contract)
+
+            if not qualified:
+                print(f"Contrat non trouvé pour {symbol}")
+                return None
+
+            contract = qualified[0]
+
+            # Demande la dernière bougie daily
+            bars = ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr='2 D',
+                barSizeSetting='1 day',
+                whatToShow='TRADES',
+                useRTH=True,
+                formatDate=1,
+                timeout=5
+            )
+
+            if not bars:
+                print(f"Aucune donnée pour {symbol}")
+                return None
+
+            # Dernière bougie close
+            last_close = bars[-1].close
+            return last_close
+
+        except Exception as e:
+            print(f"Erreur récupération {symbol}: {e}")
+            return None
+
     def run_realtime(self):
         """Execute le mode temps réel"""
-        print("Mode temps réel - à implémenter")
-        pass
+        realtime_config = self.settings['realtime']
+        update_interval = realtime_config['update_interval_seconds']
+
+        watchlist = self.load_watchlist()
+        print(f"Mode: {self.mode}")
+        print(f"Interval de mise à jour: {update_interval}s")
+        print(f"Nombre de symboles: {len(watchlist)}\n")
+
+        # Connexion IBKR
+        ib = self.connect_ibkr()
+        if not ib:
+            print("Impossible de se connecter à IBKR. Arrêt.")
+            return
+
+        try:
+            while True:
+                print(f"\n[{datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')}] Scan en cours...")
+
+                for item in watchlist:
+                    symbol = item['symbol']
+                    last_close = self.get_last_close_ibkr(ib, symbol)
+
+                    if last_close:
+                        print(f"{symbol}: ${last_close:.2f}")
+
+                print(f"\nProchaine mise à jour dans {update_interval}s...")
+                time.sleep(update_interval)
+
+        except KeyboardInterrupt:
+            print("\nArrêt du scanner temps réel")
+        finally:
+            if ib and ib.isConnected():
+                ib.disconnect()
+                print("Déconnecté d'IBKR")
 
     def run(self):
         """Point d'entrée principal"""
