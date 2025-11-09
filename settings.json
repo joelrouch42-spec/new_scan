@@ -1,5 +1,4 @@
 {
-  "mode": "backtest",
   "data_folder": "data",
   "config_file": "config.txt",
   "backtest": {

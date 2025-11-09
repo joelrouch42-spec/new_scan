@@ -15,11 +15,11 @@ class StockScanner:
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
-        # Mode override de ligne de commande est prioritaire
+        # Mode override de ligne de commande est prioritaire, sinon mode réel par défaut
         if mode_override:
             self.mode = mode_override
         else:
-            self.mode = self.settings['mode']
+            self.mode = 'realtime'
 
         self.data_folder = self.settings['data_folder']
         self.config_file = self.settings['config_file']
