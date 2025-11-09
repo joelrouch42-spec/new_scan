@@ -79,6 +79,9 @@ class StockScanner:
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
 
+        # Créer le dossier data s'il n'existe pas
+        os.makedirs(self.data_folder, exist_ok=True)
+
         watchlist = self.load_watchlist()
         print(f"Mode: {self.mode}")
         print(f"Nombre de bougies: {candle_nb}")
