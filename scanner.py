@@ -255,10 +255,86 @@ class StockScanner:
 
         return data.get('breakout_history', [])
 
+    def download_ibkr_data(self, symbol, candle_nb, interval):
+        """Télécharge les données depuis IBKR"""
+        try:
+            print(f"Téléchargement des données IBKR pour {symbol}...")
+
+            # Connexion IBKR
+            realtime_config = self.settings['realtime']
+            host = realtime_config['ibkr_host']
+            port = realtime_config['ibkr_port']
+            client_id = realtime_config['ibkr_client_id']
+
+            ib = IB()
+            ib.connect(host, port, clientId=client_id)
+
+            # Créer le contrat
+            contract = Stock(symbol, 'SMART', 'USD')
+            qualified = ib.qualifyContracts(contract)
+
+            if not qualified:
+                print(f"Contrat non trouvé pour {symbol}")
+                ib.disconnect()
+                return None
+
+            contract = qualified[0]
+
+            # Calculer la durée
+            if interval == '1d':
+                duration_str = f"{candle_nb} D"
+                bar_size = "1 day"
+            elif interval == '1h':
+                duration_str = f"{candle_nb} S"  # S pour secondes (heures)
+                bar_size = "1 hour"
+            else:
+                duration_str = f"{candle_nb} D"
+                bar_size = "1 day"
+
+            # Télécharger les données
+            bars = ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr=duration_str,
+                barSizeSetting=bar_size,
+                whatToShow='TRADES',
+                useRTH=True,
+                formatDate=1,
+                timeout=10
+            )
+
+            ib.disconnect()
+
+            if not bars or len(bars) < candle_nb:
+                print(f"Pas assez de données pour {symbol}: {len(bars) if bars else 0}/{candle_nb}")
+                # Fallback sur Yahoo si pas assez de données
+                return self.download_yahoo_data(symbol, candle_nb, interval)
+
+            # Convertir en DataFrame
+            data = []
+            for bar in bars[-candle_nb:]:
+                data.append({
+                    'Date': bar.date.strftime('%Y-%m-%d'),
+                    'Open': bar.open,
+                    'High': bar.high,
+                    'Low': bar.low,
+                    'Close': bar.close,
+                    'Volume': bar.volume
+                })
+
+            df = pd.DataFrame(data)
+            print(f"IBKR: {len(df)} bougies chargées pour {symbol}")
+            return df
+
+        except Exception as e:
+            print(f"Erreur IBKR pour {symbol}: {e}")
+            print(f"Fallback sur Yahoo Finance...")
+            return self.download_yahoo_data(symbol, candle_nb, interval)
+
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
         try:
-            print(f"Téléchargement des données pour {symbol}...")
+            print(f"Téléchargement des données Yahoo pour {symbol}...")
             ticker = yf.Ticker(symbol)
 
             # Calculer la période nécessaire avec marge de sécurité
@@ -322,7 +398,8 @@ class StockScanner:
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
             else:
-                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
+                # TEMPORAIRE: Utilise IBKR au lieu de Yahoo pour éviter les gaps
+                df = self.download_ibkr_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
