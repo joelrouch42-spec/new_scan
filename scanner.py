@@ -155,12 +155,12 @@ class StockScanner:
             tolerance_range = level * flip_tolerance
 
             # Cas 1: Ancien resistance → nouveau support
-            # Le prix revient toucher le niveau PAR EN DESSOUS
+            # Après un breakout de résistance, le prix revient tester PAR LE HAUT
             if original_type == 'resistance':
-                # Le prix doit venir du bas et toucher le niveau
-                if (prev_close < level and
-                    current_high >= level - tolerance_range and
-                    current_high <= level + tolerance_range):
+                # Le prix doit venir du haut et toucher le niveau
+                if (prev_close > level and
+                    current_low <= level + tolerance_range and
+                    current_low >= level - tolerance_range):
                     return {
                         'type': 'flip_resistance_to_support',
                         'level': level,
@@ -170,12 +170,12 @@ class StockScanner:
                     }
 
             # Cas 2: Ancien support → nouveau resistance
-            # Le prix revient toucher le niveau PAR AU DESSUS
+            # Après un breakdown de support, le prix revient tester PAR LE BAS
             elif original_type == 'support':
-                # Le prix doit venir du haut et toucher le niveau
-                if (prev_close > level and
-                    current_low <= level + tolerance_range and
-                    current_low >= level - tolerance_range):
+                # Le prix doit venir du bas et toucher le niveau
+                if (prev_close < level and
+                    current_high >= level - tolerance_range and
+                    current_high <= level + tolerance_range):
                     return {
                         'type': 'flip_support_to_resistance',
                         'level': level,
@@ -469,10 +469,11 @@ class StockScanner:
             tolerance_range = level * flip_tolerance
 
             # Cas 1: Ancien resistance → nouveau support
+            # Après un breakout de résistance, le prix revient tester PAR LE HAUT
             if original_type == 'resistance':
-                if (prev_close < level and
-                    current_high >= level - tolerance_range and
-                    current_high <= level + tolerance_range):
+                if (prev_close > level and
+                    current_low <= level + tolerance_range and
+                    current_low >= level - tolerance_range):
                     return {
                         'type': 'flip_resistance_to_support',
                         'level': level,
@@ -482,10 +483,11 @@ class StockScanner:
                     }
 
             # Cas 2: Ancien support → nouveau resistance
+            # Après un breakdown de support, le prix revient tester PAR LE BAS
             elif original_type == 'support':
-                if (prev_close > level and
-                    current_low <= level + tolerance_range and
-                    current_low >= level - tolerance_range):
+                if (prev_close < level and
+                    current_high >= level - tolerance_range and
+                    current_high <= level + tolerance_range):
                     return {
                         'type': 'flip_support_to_resistance',
                         'level': level,
