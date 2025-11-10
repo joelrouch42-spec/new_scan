@@ -195,6 +195,8 @@ class StockScanner:
         backtest_config = self.settings['backtest']
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
+        test_start = backtest_config['test_candle_start']
+        test_stop = backtest_config['test_candle_stop']
 
         # Créer le dossier data s'il n'existe pas
         os.makedirs(self.data_folder, exist_ok=True)
@@ -203,6 +205,7 @@ class StockScanner:
         print(f"Mode: {self.mode}")
         print(f"Nombre de bougies: {candle_nb}")
         print(f"Interval: {interval}")
+        print(f"Test range: {test_start} à {test_stop}")
         print(f"Nombre de symboles: {len(watchlist)}\n")
 
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
@@ -213,33 +216,38 @@ class StockScanner:
 
             # Télécharge ou charge les données
             if self.check_file_exists(filename):
-                print(f"Chargement {symbol} depuis fichier existant")
                 df = pd.read_csv(filename)
             else:
                 df = self.download_yahoo_data(symbol, candle_nb, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
-                    print(f"Données sauvegardées: {filename}")
                 else:
                     continue
 
-            # Analyse des patterns
-            if df is not None and len(df) > 0:
-                # Détecte les S/R
-                support_levels, resistance_levels = self.find_support_resistance(df)
-                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances")
+            if df is None or len(df) == 0:
+                continue
 
-                # Sauvegarde TOUJOURS les S/R avec la date
-                self.save_sr_levels(symbol, support_levels, resistance_levels, today)
+            print(f"\n{symbol}:")
 
-                # Détecte les breakouts
-                breakout = self.detect_breakouts(df, support_levels, resistance_levels)
+            # Boucle de test du passé vers le présent
+            for current_pos in range(test_start, test_stop + 1):
+                if current_pos > len(df):
+                    break
+
+                # Prend les données jusqu'à la position actuelle
+                df_until_pos = df.iloc[:current_pos].copy()
+
+                # Calcule S/R sur les données jusqu'à cette position
+                support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
+
+                # Sauvegarde les S/R pour la dernière position (fin du test)
+                if current_pos == test_stop:
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today)
+
+                # Détecte breakout sur la dernière bougie de cette position
+                breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
                 if breakout:
-                    print(f"  BREAKOUT: {breakout['type']} à {breakout['level']:.2f}")
-                else:
-                    print(f"  Pas de breakout")
-
-            print()
+                    print(f"  Bougie {current_pos}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
