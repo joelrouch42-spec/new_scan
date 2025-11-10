@@ -126,14 +126,15 @@ class StockScanner:
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float]):
+    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
-        filename = os.path.join(self.patterns_folder, f"{symbol}_sr.json")
+        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
 
         data = {
             'symbol': symbol,
+            'date': date,
             'support_levels': support_levels,
             'resistance_levels': resistance_levels,
             'updated': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
@@ -142,9 +143,9 @@ class StockScanner:
         with open(filename, 'w') as f:
             json.dump(data, f, indent=2)
 
-    def load_sr_levels(self, symbol: str) -> Tuple[List[float], List[float]]:
+    def load_sr_levels(self, symbol: str, date: str) -> Tuple[List[float], List[float]]:
         """Charge les niveaux S/R depuis le fichier"""
-        filename = os.path.join(self.patterns_folder, f"{symbol}_sr.json")
+        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
 
         if not os.path.exists(filename):
             return [], []
@@ -248,8 +249,8 @@ class StockScanner:
                 support_levels, resistance_levels = self.find_support_resistance(df)
                 print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances")
 
-                # Sauvegarde TOUJOURS les S/R
-                self.save_sr_levels(symbol, support_levels, resistance_levels)
+                # Sauvegarde TOUJOURS les S/R avec la date
+                self.save_sr_levels(symbol, support_levels, resistance_levels, today)
 
                 # Détecte les breakouts
                 breakout = self.detect_breakouts(df, support_levels, resistance_levels)
@@ -363,6 +364,27 @@ class StockScanner:
         print(f"Interval de mise à jour: {update_interval}s")
         print(f"Nombre de symboles: {len(watchlist)}\n")
 
+        # Charge les S/R UNE FOIS à l'initialisation
+        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+        print(f"Chargement des S/R pour la date: {today}\n")
+
+        sr_data = {}
+        for item in watchlist:
+            symbol = item['symbol']
+            support_levels, resistance_levels = self.load_sr_levels(symbol, today)
+
+            if not support_levels and not resistance_levels:
+                print(f"{symbol}: Pas de S/R pour {today} - lancer --backtest d'abord")
+                sr_data[symbol] = None
+            else:
+                sr_data[symbol] = {
+                    'support_levels': support_levels,
+                    'resistance_levels': resistance_levels
+                }
+                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances chargés")
+
+        print()
+
         # Connexion IBKR
         ib = self.connect_ibkr()
         if not ib:
@@ -376,12 +398,12 @@ class StockScanner:
                 for item in watchlist:
                     symbol = item['symbol']
 
-                    # Charge les S/R
-                    support_levels, resistance_levels = self.load_sr_levels(symbol)
-
-                    if not support_levels and not resistance_levels:
-                        print(f"{symbol}: Pas de S/R - lancer --backtest d'abord")
+                    # Utilise les S/R chargés en mémoire
+                    if sr_data[symbol] is None:
                         continue
+
+                    support_levels = sr_data[symbol]['support_levels']
+                    resistance_levels = sr_data[symbol]['resistance_levels']
 
                     # Récupère les données IBKR
                     bars_data = self.get_last_bars_ibkr(ib, symbol)
