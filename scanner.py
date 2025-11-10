@@ -280,12 +280,16 @@ class StockScanner:
         test_start = backtest_config['test_candle_start']
         test_stop = backtest_config['test_candle_stop']
 
+        # Calculer le nombre total de bougies à charger
+        total_candles_needed = candle_nb + test_stop
+
         # Créer le dossier data s'il n'existe pas
         os.makedirs(self.data_folder, exist_ok=True)
 
         watchlist = self.load_watchlist()
         print(f"Mode: {self.mode}")
-        print(f"Nombre de bougies: {candle_nb}")
+        print(f"Nombre de bougies pour S/R: {candle_nb}")
+        print(f"Nombre total de bougies chargées: {total_candles_needed}")
         print(f"Interval: {interval}")
         print(f"Test range: {test_start} à {test_stop}")
         print(f"Nombre de symboles: {len(watchlist)}\n")
@@ -294,13 +298,13 @@ class StockScanner:
 
         for item in watchlist:
             symbol = item['symbol']
-            filename = self.get_data_filename(symbol, candle_nb, interval, today)
+            filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
             # Télécharge ou charge les données
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
             else:
-                df = self.download_yahoo_data(symbol, candle_nb, interval)
+                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
