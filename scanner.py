@@ -100,8 +100,12 @@ class StockScanner:
 
         return support_clusters, resistance_clusters
 
-    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], symbol: str = None) -> Optional[Dict]:
-        """Détecte les breakouts de support/résistance"""
+    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, symbol: str = None) -> Optional[Dict]:
+        """Détecte les breakouts de support/résistance
+
+        Args:
+            last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
+        """
         if len(df) < 2:
             return None
 
@@ -111,25 +115,29 @@ class StockScanner:
         prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
 
-        # Détection breakout résistance (vers le haut)
-        for resistance in resistance_levels:
-            if prev_close < resistance and current_high > resistance:
-                return {
-                    'type': 'resistance_breakout',
-                    'level': resistance,
-                    'close': current_close,
-                    'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
-                }
+        # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
+        if last_breakout_direction != 'up':
+            for resistance in resistance_levels:
+                if prev_close < resistance and current_high > resistance:
+                    return {
+                        'type': 'resistance_breakout',
+                        'level': resistance,
+                        'close': current_close,
+                        'direction': 'up',
+                        'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
+                    }
 
-        # Détection breakdown support (vers le bas)
-        for support in support_levels:
-            if prev_close > support and current_low < support:
-                return {
-                    'type': 'support_breakdown',
-                    'level': support,
-                    'close': current_close,
-                    'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
-                }
+        # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
+        if last_breakout_direction != 'down':
+            for support in support_levels:
+                if prev_close > support and current_low < support:
+                    return {
+                        'type': 'support_breakdown',
+                        'level': support,
+                        'close': current_close,
+                        'direction': 'down',
+                        'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
+                    }
 
         return None
 
@@ -184,7 +192,7 @@ class StockScanner:
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str, breakout_history: Optional[List[Dict]] = None):
+    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
@@ -192,11 +200,13 @@ class StockScanner:
 
         # Charge l'historique existant si présent
         existing_history = []
+        existing_direction = None
         if os.path.exists(filename):
             try:
                 with open(filename, 'r') as f:
                     existing_data = json.load(f)
                     existing_history = existing_data.get('breakout_history', [])
+                    existing_direction = existing_data.get('last_breakout_direction')
             except:
                 pass
 
@@ -206,12 +216,19 @@ class StockScanner:
         else:
             final_history = existing_history
 
+        # Utilise la direction fournie ou conserve l'existante
+        if last_breakout_direction is not None:
+            final_direction = last_breakout_direction
+        else:
+            final_direction = existing_direction
+
         data = {
             'symbol': symbol,
             'date': date,
             'support_levels': support_levels,
             'resistance_levels': resistance_levels,
             'breakout_history': final_history,
+            'last_breakout_direction': final_direction,
             'updated': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
         }
 
@@ -241,6 +258,18 @@ class StockScanner:
             data = json.load(f)
 
         return data.get('breakout_history', [])
+
+    def load_last_breakout_direction(self, symbol: str, date: str) -> Optional[str]:
+        """Charge la direction du dernier breakout depuis le fichier"""
+        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
+
+        if not os.path.exists(filename):
+            return None
+
+        with open(filename, 'r') as f:
+            data = json.load(f)
+
+        return data.get('last_breakout_direction')
 
     def download_ibkr_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis IBKR"""
@@ -401,6 +430,7 @@ class StockScanner:
 
             # Initialise l'historique des breakouts pour ce symbole
             breakout_history = []
+            last_breakout_direction = None  # 'up', 'down', ou None
 
             # Boucle de test: du passé vers le présent (de test_stop vers test_start)
             for candle_nb in range(test_stop, test_start - 1, -1):
@@ -426,11 +456,14 @@ class StockScanner:
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
                 if self.is_pattern_enabled('breakouts'):
-                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, symbol)
+                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, last_breakout_direction, symbol)
                     if breakout:
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
                         print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+
+                        # Met à jour la direction du dernier breakout
+                        last_breakout_direction = breakout['direction']
 
                         # Ajoute le breakout à l'historique
                         breakout_history.append({
@@ -442,7 +475,7 @@ class StockScanner:
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
                 if candle_nb == test_start:
-                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history)
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
@@ -509,32 +542,40 @@ class StockScanner:
             print(f"Erreur récupération {symbol}: {e}")
             return None
 
-    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
-        """Vérifie si un breakout est en cours avec les données temps réel"""
+    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None) -> Optional[Dict]:
+        """Vérifie si un breakout est en cours avec les données temps réel
+
+        Args:
+            last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
+        """
         prev_close = bars_data['prev_close']
         current_high = bars_data['current_high']
         current_low = bars_data['current_low']
         current_close = bars_data['current_close']
 
-        # Détection breakout résistance (vers le haut)
-        for resistance in resistance_levels:
-            if prev_close < resistance and current_high > resistance:
-                return {
-                    'type': 'resistance_breakout',
-                    'level': resistance,
-                    'close': current_close,
-                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
-                }
+        # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
+        if last_breakout_direction != 'up':
+            for resistance in resistance_levels:
+                if prev_close < resistance and current_high > resistance:
+                    return {
+                        'type': 'resistance_breakout',
+                        'level': resistance,
+                        'close': current_close,
+                        'direction': 'up',
+                        'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                    }
 
-        # Détection breakdown support (vers le bas)
-        for support in support_levels:
-            if prev_close > support and current_low < support:
-                return {
-                    'type': 'support_breakdown',
-                    'level': support,
-                    'close': current_close,
-                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
-                }
+        # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
+        if last_breakout_direction != 'down':
+            for support in support_levels:
+                if prev_close > support and current_low < support:
+                    return {
+                        'type': 'support_breakdown',
+                        'level': support,
+                        'close': current_close,
+                        'direction': 'down',
+                        'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                    }
 
         return None
 
@@ -607,6 +648,7 @@ class StockScanner:
             symbol = item['symbol']
             support_levels, resistance_levels = self.load_sr_levels(symbol, today)
             breakout_history = self.load_breakout_history(symbol, today)
+            last_breakout_direction = self.load_last_breakout_direction(symbol, today)
 
             if not support_levels and not resistance_levels:
                 print(f"{symbol}: Pas de S/R pour {today} - lancer --backtest d'abord")
@@ -615,7 +657,8 @@ class StockScanner:
                 sr_data[symbol] = {
                     'support_levels': support_levels,
                     'resistance_levels': resistance_levels,
-                    'breakout_history': breakout_history
+                    'breakout_history': breakout_history,
+                    'last_breakout_direction': last_breakout_direction
                 }
                 print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances, {len(breakout_history)} breakouts chargés")
 
@@ -639,6 +682,7 @@ class StockScanner:
                     support_levels = sr_data[symbol]['support_levels']
                     resistance_levels = sr_data[symbol]['resistance_levels']
                     breakout_history = sr_data[symbol]['breakout_history']
+                    last_breakout_direction = sr_data[symbol]['last_breakout_direction']
 
                     # Récupère les données IBKR
                     bars_data = self.get_last_bars_ibkr(ib, symbol)
@@ -654,9 +698,24 @@ class StockScanner:
 
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
-                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
+                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels, last_breakout_direction)
                         if breakout:
                             print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
+
+                            # Met à jour la direction et sauvegarde
+                            last_breakout_direction = breakout['direction']
+                            sr_data[symbol]['last_breakout_direction'] = last_breakout_direction
+
+                            # Ajoute le breakout à l'historique
+                            breakout_history.append({
+                                'level': breakout['level'],
+                                'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
+                                'breakout_candle': 0,
+                                'breakout_date': today
+                            })
+
+                            # Sauvegarde le nouveau statut
+                            self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction)
 
                 time.sleep(update_interval)
 
