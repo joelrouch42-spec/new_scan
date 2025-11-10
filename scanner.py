@@ -40,6 +40,13 @@ class StockScanner:
                         symbols.append({'symbol': symbol, 'provider': provider})
         return symbols
 
+    def is_pattern_enabled(self, pattern_name: str) -> bool:
+        """Vérifie si un pattern est activé dans la configuration"""
+        for pattern in self.patterns_config.get('patterns', []):
+            if pattern['name'] == pattern_name:
+                return pattern.get('enabled', False)
+        return False
+
     def get_data_filename(self, symbol, candle_nb, interval, date):
         """Génère le nom du fichier de données"""
         return os.path.join(
@@ -332,23 +339,25 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
-                # Détecte les flips (role reversals)
-                flip = self.detect_flips(df_until_pos, breakout_history)
-                if flip:
-                    print(f"{symbol}: Bougie {candle_nb}: FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                # Détecte les flips (role reversals) si activé
+                if self.is_pattern_enabled('flips'):
+                    flip = self.detect_flips(df_until_pos, breakout_history)
+                    if flip:
+                        print(f"{symbol}: Bougie {candle_nb}: FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
-                # Détecte breakout sur la dernière bougie de cette position
-                breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
-                if breakout:
-                    print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+                # Détecte breakout sur la dernière bougie de cette position si activé
+                if self.is_pattern_enabled('breakouts'):
+                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
+                    if breakout:
+                        print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
-                    # Ajoute le breakout à l'historique
-                    breakout_history.append({
-                        'level': breakout['level'],
-                        'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
-                        'breakout_candle': candle_nb,
-                        'breakout_date': today
-                    })
+                        # Ajoute le breakout à l'historique
+                        breakout_history.append({
+                            'level': breakout['level'],
+                            'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
+                            'breakout_candle': candle_nb,
+                            'breakout_date': today
+                        })
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
                 if candle_nb == test_start:
@@ -545,15 +554,17 @@ class StockScanner:
                     if not bars_data:
                         continue
 
-                    # Vérifie flip
-                    flip = self.check_realtime_flip(bars_data, breakout_history)
-                    if flip:
-                        print(f"FLIP: {symbol} ${bars_data['current_close']:.2f} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                    # Vérifie flip si activé
+                    if self.is_pattern_enabled('flips'):
+                        flip = self.check_realtime_flip(bars_data, breakout_history)
+                        if flip:
+                            print(f"FLIP: {symbol} ${bars_data['current_close']:.2f} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
-                    # Vérifie breakout
-                    breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
-                    if breakout:
-                        print(f"BREAKOUT: {symbol} ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
+                    # Vérifie breakout si activé
+                    if self.is_pattern_enabled('breakouts'):
+                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
+                        if breakout:
+                            print(f"BREAKOUT: {symbol} ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
 
                 time.sleep(update_interval)
 
