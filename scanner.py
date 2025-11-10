@@ -113,9 +113,6 @@ class StockScanner:
 
         # Détection breakout résistance (vers le haut)
         for resistance in resistance_levels:
-            if symbol == 'MSTR':
-                print(f"    Test resistance {resistance:.2f}: prev_close={prev_close:.2f} < {resistance:.2f}? {prev_close < resistance}, current_high={current_high:.2f} > {resistance:.2f}? {current_high > resistance}")
-
             if prev_close < resistance and current_high > resistance:
                 return {
                     'type': 'resistance_breakout',
@@ -126,9 +123,6 @@ class StockScanner:
 
         # Détection breakdown support (vers le bas)
         for support in support_levels:
-            if symbol == 'MSTR':
-                print(f"    Test support {support:.2f}: prev_close={prev_close:.2f} > {support:.2f}? {prev_close > support}, current_low={current_low:.2f} < {support:.2f}? {current_low < support}")
-
             if prev_close > support and current_low < support:
                 return {
                     'type': 'support_breakdown',
@@ -159,13 +153,6 @@ class StockScanner:
 
             # Vérifie si on est proche du niveau (dans la tolérance)
             tolerance_range = level * flip_tolerance
-
-            if symbol == 'MSTR':
-                print(f"    Test flip {original_type} @ {level:.2f}: tolerance={tolerance_range:.2f}")
-                if original_type == 'resistance':
-                    print(f"      current_low={current_low:.2f} dans [{level - tolerance_range:.2f}, {level + tolerance_range:.2f}]? {current_low >= level - tolerance_range and current_low <= level + tolerance_range}")
-                else:
-                    print(f"      current_high={current_high:.2f} dans [{level - tolerance_range:.2f}, {level + tolerance_range:.2f}]? {current_high >= level - tolerance_range and current_high <= level + tolerance_range}")
 
             # Cas 1: Ancien resistance → nouveau support
             # Après un breakout de résistance, le prix revient tester le niveau
@@ -258,7 +245,6 @@ class StockScanner:
     def download_ibkr_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis IBKR"""
         try:
-            print(f"Téléchargement des données IBKR pour {symbol}...")
 
             # Connexion IBKR
             realtime_config = self.settings['realtime']
@@ -274,7 +260,6 @@ class StockScanner:
             qualified = ib.qualifyContracts(contract)
 
             if not qualified:
-                print(f"Contrat non trouvé pour {symbol}")
                 ib.disconnect()
                 return None
 
@@ -306,7 +291,6 @@ class StockScanner:
             ib.disconnect()
 
             if not bars or len(bars) < candle_nb:
-                print(f"Pas assez de données pour {symbol}: {len(bars) if bars else 0}/{candle_nb}")
                 # Fallback sur Yahoo si pas assez de données
                 return self.download_yahoo_data(symbol, candle_nb, interval)
 
@@ -332,18 +316,14 @@ class StockScanner:
                 })
 
             df = pd.DataFrame(data)
-            print(f"IBKR: {len(df)} bougies chargées pour {symbol}")
             return df
 
         except Exception as e:
-            print(f"Erreur IBKR pour {symbol}: {e}")
-            print(f"Fallback sur Yahoo Finance...")
             return self.download_yahoo_data(symbol, candle_nb, interval)
 
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
         try:
-            print(f"Téléchargement des données Yahoo pour {symbol}...")
             ticker = yf.Ticker(symbol)
 
             # Calculer la période nécessaire avec marge de sécurité
@@ -435,22 +415,6 @@ class StockScanner:
 
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
-
-                # Log pour MSTR
-                if symbol == 'MSTR':
-                    last_row = df_until_pos.iloc[-1]
-                    date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                    print(f"\n{symbol}: Bougie {candle_nb} ({date_str}):")
-                    print(f"  Prix: High={last_row['High']:.2f}, Low={last_row['Low']:.2f}, Close={last_row['Close']:.2f}")
-                    print(f"  S/R: {len(support_levels)} supports, {len(resistance_levels)} résistances")
-                    if support_levels:
-                        print(f"  Supports: {[f'{s:.2f}' for s in support_levels]}")
-                    if resistance_levels:
-                        print(f"  Résistances: {[f'{r:.2f}' for r in resistance_levels]}")
-                    if breakout_history:
-                        print(f"  Historique breakouts: {len(breakout_history)} éléments")
-                        for bo in breakout_history:
-                            print(f"    - {bo['original_type']} @ {bo['level']:.2f} (bougie {bo['breakout_candle']})")
 
                 # Détecte les flips (role reversals) si activé
                 if self.is_pattern_enabled('flips'):
