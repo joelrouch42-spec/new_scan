@@ -126,6 +126,34 @@ class StockScanner:
 
         return None
 
+    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float]):
+        """Sauvegarde les niveaux S/R pour un symbole"""
+        os.makedirs(self.patterns_folder, exist_ok=True)
+
+        filename = os.path.join(self.patterns_folder, f"{symbol}_sr.json")
+
+        data = {
+            'symbol': symbol,
+            'support_levels': support_levels,
+            'resistance_levels': resistance_levels,
+            'updated': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def load_sr_levels(self, symbol: str) -> Tuple[List[float], List[float]]:
+        """Charge les niveaux S/R depuis le fichier"""
+        filename = os.path.join(self.patterns_folder, f"{symbol}_sr.json")
+
+        if not os.path.exists(filename):
+            return [], []
+
+        with open(filename, 'r') as f:
+            data = json.load(f)
+
+        return data.get('support_levels', []), data.get('resistance_levels', [])
+
     def save_pattern(self, symbol: str, pattern_data: Dict):
         """Sauvegarde un pattern détecté dans un fichier"""
         os.makedirs(self.patterns_folder, exist_ok=True)
@@ -220,6 +248,9 @@ class StockScanner:
                 support_levels, resistance_levels = self.find_support_resistance(df)
                 print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances")
 
+                # Sauvegarde TOUJOURS les S/R
+                self.save_sr_levels(symbol, support_levels, resistance_levels)
+
                 # Détecte les breakouts
                 breakout = self.detect_breakouts(df, support_levels, resistance_levels)
                 if breakout:
@@ -253,8 +284,8 @@ class StockScanner:
             print(f"Erreur connexion IBKR: {e}")
             return None
 
-    def get_last_close_ibkr(self, ib, symbol):
-        """Récupère le close de la dernière bougie depuis IBKR"""
+    def get_last_bars_ibkr(self, ib, symbol):
+        """Récupère les 2 dernières bougies depuis IBKR"""
         try:
             contract = Stock(symbol, 'SMART', 'USD')
             qualified = ib.qualifyContracts(contract)
@@ -265,7 +296,7 @@ class StockScanner:
 
             contract = qualified[0]
 
-            # Demande la dernière bougie daily
+            # Demande les 2 dernières bougies daily
             bars = ib.reqHistoricalData(
                 contract,
                 endDateTime='',
@@ -277,17 +308,50 @@ class StockScanner:
                 timeout=5
             )
 
-            if not bars:
-                print(f"Aucune donnée pour {symbol}")
+            if not bars or len(bars) < 2:
+                print(f"Pas assez de données pour {symbol}")
                 return None
 
-            # Dernière bougie close
-            last_close = bars[-1].close
-            return last_close
+            # Retourne les 2 dernières bougies
+            return {
+                'prev_close': bars[-2].close,
+                'current_high': bars[-1].high,
+                'current_low': bars[-1].low,
+                'current_close': bars[-1].close
+            }
 
         except Exception as e:
             print(f"Erreur récupération {symbol}: {e}")
             return None
+
+    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
+        """Vérifie si un breakout est en cours avec les données temps réel"""
+        prev_close = bars_data['prev_close']
+        current_high = bars_data['current_high']
+        current_low = bars_data['current_low']
+        current_close = bars_data['current_close']
+
+        # Détection breakout résistance (vers le haut)
+        for resistance in resistance_levels:
+            if prev_close < resistance and current_high > resistance:
+                return {
+                    'type': 'resistance_breakout',
+                    'level': resistance,
+                    'close': current_close,
+                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                }
+
+        # Détection breakdown support (vers le bas)
+        for support in support_levels:
+            if prev_close > support and current_low < support:
+                return {
+                    'type': 'support_breakdown',
+                    'level': support,
+                    'close': current_close,
+                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                }
+
+        return None
 
     def run_realtime(self):
         """Execute le mode temps réel"""
@@ -311,10 +375,35 @@ class StockScanner:
 
                 for item in watchlist:
                     symbol = item['symbol']
-                    last_close = self.get_last_close_ibkr(ib, symbol)
 
-                    if last_close:
-                        print(f"{symbol}: ${last_close:.2f}")
+                    # Charge les S/R
+                    support_levels, resistance_levels = self.load_sr_levels(symbol)
+
+                    if not support_levels and not resistance_levels:
+                        print(f"{symbol}: Pas de S/R - lancer --backtest d'abord")
+                        continue
+
+                    # Récupère les données IBKR
+                    bars_data = self.get_last_bars_ibkr(ib, symbol)
+
+                    if not bars_data:
+                        continue
+
+                    # Affiche le prix
+                    print(f"{symbol}: ${bars_data['current_close']:.2f} (S:{len(support_levels)} R:{len(resistance_levels)})")
+
+                    # Vérifie breakout
+                    breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
+                    if breakout:
+                        print(f"  🔥 BREAKOUT TEMPS RÉEL: {breakout['type']} à {breakout['level']:.2f}")
+                        # Sauvegarde le pattern
+                        pattern_data = {
+                            'pattern': 'breakout',
+                            'data': breakout,
+                            'support_levels': support_levels,
+                            'resistance_levels': resistance_levels
+                        }
+                        self.save_pattern(symbol, pattern_data)
 
                 print(f"\nProchaine mise à jour dans {update_interval}s...")
                 time.sleep(update_interval)
