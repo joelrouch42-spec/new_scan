@@ -58,23 +58,6 @@ class StockScanner:
         """Vérifie si le fichier existe"""
         return os.path.exists(filepath)
 
-    def count_touches(self, df: pd.DataFrame, level: float, tolerance: float, is_support: bool) -> int:
-        """Compte combien de fois un niveau a été testé"""
-        touches = 0
-        for i in range(len(df)):
-            if is_support:
-                # Pour un support, on regarde les lows
-                price = df['Low'].iloc[i]
-            else:
-                # Pour une résistance, on regarde les highs
-                price = df['High'].iloc[i]
-
-            # Si le prix touche le niveau (dans la tolérance)
-            if abs(price - level) / level <= tolerance:
-                touches += 1
-
-        return touches
-
     def find_support_resistance(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
         """Trouve les niveaux de support et résistance"""
         sr_config = self.patterns_config['support_resistance']
@@ -97,7 +80,7 @@ class StockScanner:
         resistance_levels = highs[resistance_idx] if resistance_idx.size else np.array([])
         support_levels = lows[support_idx] if support_idx.size else np.array([])
 
-        def cluster_levels(levels: np.ndarray) -> List[float]:
+        def cluster_levels(levels: np.ndarray, min_touches: int) -> List[float]:
             if len(levels) == 0:
                 return []
             levels_sorted = sorted(levels)
@@ -108,28 +91,19 @@ class StockScanner:
                 if abs(level - current_cluster[-1]) / denom < cluster_threshold:
                     current_cluster.append(level)
                 else:
-                    clusters.append(float(np.mean(current_cluster)))
+                    # Ne garde le cluster que s'il a assez d'extrema
+                    if len(current_cluster) >= min_touches:
+                        clusters.append(float(np.mean(current_cluster)))
                     current_cluster = [level]
-            clusters.append(float(np.mean(current_cluster)))
+            # Dernier cluster
+            if len(current_cluster) >= min_touches:
+                clusters.append(float(np.mean(current_cluster)))
             return clusters
 
-        support_clusters = cluster_levels(support_levels)
-        resistance_clusters = cluster_levels(resistance_levels)
+        support_clusters = cluster_levels(support_levels, min_touches)
+        resistance_clusters = cluster_levels(resistance_levels, min_touches)
 
-        # Filtre les niveaux par nombre de touches minimum
-        validated_supports = []
-        for level in support_clusters:
-            touches = self.count_touches(df, level, cluster_threshold, is_support=True)
-            if touches >= min_touches:
-                validated_supports.append(level)
-
-        validated_resistances = []
-        for level in resistance_clusters:
-            touches = self.count_touches(df, level, cluster_threshold, is_support=False)
-            if touches >= min_touches:
-                validated_resistances.append(level)
-
-        return validated_supports, validated_resistances
+        return support_clusters, resistance_clusters
 
     def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, symbol: str = None) -> Optional[Dict]:
         """Détecte les breakouts de support/résistance
