@@ -1,10 +1,11 @@
 {
   "data_folder": "data",
-  "config_file": "config.txt",
   "backtest": {
     "candle_nb": 120,
     "interval": "1d",
-    "data_source": "yahoo"
+    "data_source": "yahoo",
+    "test_candle_start": 1,
+    "test_candle_stop": 2
   },
   "realtime": {
     "update_interval_seconds": 60,
