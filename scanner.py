@@ -111,8 +111,18 @@ class StockScanner:
         prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
 
+        # Log pour debug MSTR
+        symbol_col = df.get('Symbol', df.get('symbol', None))
+        if symbol_col is not None and len(symbol_col) > 0:
+            symbol = symbol_col.iloc[0] if hasattr(symbol_col.iloc[0], 'upper') else None
+        else:
+            symbol = None
+
         # Détection breakout résistance (vers le haut)
         for resistance in resistance_levels:
+            if symbol == 'MSTR':
+                print(f"    Test resistance {resistance:.2f}: prev_close={prev_close:.2f} < {resistance:.2f}? {prev_close < resistance}, current_high={current_high:.2f} > {resistance:.2f}? {current_high > resistance}")
+
             if prev_close < resistance and current_high > resistance:
                 return {
                     'type': 'resistance_breakout',
@@ -123,6 +133,9 @@ class StockScanner:
 
         # Détection breakdown support (vers le bas)
         for support in support_levels:
+            if symbol == 'MSTR':
+                print(f"    Test support {support:.2f}: prev_close={prev_close:.2f} > {support:.2f}? {prev_close > support}, current_low={current_low:.2f} < {support:.2f}? {current_low < support}")
+
             if prev_close > support and current_low < support:
                 return {
                     'type': 'support_breakdown',
