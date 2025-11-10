@@ -155,26 +155,6 @@ class StockScanner:
 
         return data.get('support_levels', []), data.get('resistance_levels', [])
 
-    def save_pattern(self, symbol: str, pattern_data: Dict, date: str):
-        """Sauvegarde un pattern détecté dans un fichier"""
-        os.makedirs(self.patterns_folder, exist_ok=True)
-
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_patterns.json")
-
-        # Charge les patterns existants ou crée nouveau
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {'symbol': symbol, 'date': date, 'patterns': []}
-
-        # Ajoute le nouveau pattern
-        data['patterns'].append(pattern_data)
-
-        # Sauvegarde
-        with open(filename, 'w') as f:
-            json.dump(data, f, indent=2)
-
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
         try:
@@ -256,14 +236,6 @@ class StockScanner:
                 breakout = self.detect_breakouts(df, support_levels, resistance_levels)
                 if breakout:
                     print(f"  🔥 BREAKOUT détecté: {breakout['type']} à {breakout['level']:.2f}")
-                    # Sauvegarde le pattern
-                    pattern_data = {
-                        'pattern': 'breakout',
-                        'data': breakout,
-                        'support_levels': support_levels,
-                        'resistance_levels': resistance_levels
-                    }
-                    self.save_pattern(symbol, pattern_data, today)
                 else:
                     print(f"  Pas de breakout")
 
@@ -418,14 +390,6 @@ class StockScanner:
                     breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
                     if breakout:
                         print(f"  🔥 BREAKOUT TEMPS RÉEL: {breakout['type']} à {breakout['level']:.2f}")
-                        # Sauvegarde le pattern
-                        pattern_data = {
-                            'pattern': 'breakout',
-                            'data': breakout,
-                            'support_levels': support_levels,
-                            'resistance_levels': resistance_levels
-                        }
-                        self.save_pattern(symbol, pattern_data, today)
 
                 print(f"\nProchaine mise à jour dans {update_interval}s...")
                 time.sleep(update_interval)
