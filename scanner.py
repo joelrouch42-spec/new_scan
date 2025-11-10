@@ -337,6 +337,21 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
+                # Log pour MSTR
+                if symbol == 'MSTR':
+                    last_row = df_until_pos.iloc[-1]
+                    print(f"\n{symbol}: Bougie {candle_nb}:")
+                    print(f"  Prix: High={last_row['High']:.2f}, Low={last_row['Low']:.2f}, Close={last_row['Close']:.2f}")
+                    print(f"  S/R: {len(support_levels)} supports, {len(resistance_levels)} résistances")
+                    if support_levels:
+                        print(f"  Supports: {[f'{s:.2f}' for s in support_levels]}")
+                    if resistance_levels:
+                        print(f"  Résistances: {[f'{r:.2f}' for r in resistance_levels]}")
+                    if breakout_history:
+                        print(f"  Historique breakouts: {len(breakout_history)} éléments")
+                        for bo in breakout_history:
+                            print(f"    - {bo['original_type']} @ {bo['level']:.2f} (bougie {bo['breakout_candle']})")
+
                 # Détecte les flips (role reversals) si activé
                 if self.is_pattern_enabled('flips'):
                     flip = self.detect_flips(df_until_pos, breakout_history)
