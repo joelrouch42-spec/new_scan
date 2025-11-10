@@ -155,18 +155,18 @@ class StockScanner:
 
         return data.get('support_levels', []), data.get('resistance_levels', [])
 
-    def save_pattern(self, symbol: str, pattern_data: Dict):
+    def save_pattern(self, symbol: str, pattern_data: Dict, date: str):
         """Sauvegarde un pattern détecté dans un fichier"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
-        filename = os.path.join(self.patterns_folder, f"{symbol}_patterns.json")
+        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_patterns.json")
 
         # Charge les patterns existants ou crée nouveau
         if os.path.exists(filename):
             with open(filename, 'r') as f:
                 data = json.load(f)
         else:
-            data = {'symbol': symbol, 'patterns': []}
+            data = {'symbol': symbol, 'date': date, 'patterns': []}
 
         # Ajoute le nouveau pattern
         data['patterns'].append(pattern_data)
@@ -263,7 +263,7 @@ class StockScanner:
                         'support_levels': support_levels,
                         'resistance_levels': resistance_levels
                     }
-                    self.save_pattern(symbol, pattern_data)
+                    self.save_pattern(symbol, pattern_data, today)
                 else:
                     print(f"  Pas de breakout")
 
@@ -425,7 +425,7 @@ class StockScanner:
                             'support_levels': support_levels,
                             'resistance_levels': resistance_levels
                         }
-                        self.save_pattern(symbol, pattern_data)
+                        self.save_pattern(symbol, pattern_data, today)
 
                 print(f"\nProchaine mise à jour dans {update_interval}s...")
                 time.sleep(update_interval)
