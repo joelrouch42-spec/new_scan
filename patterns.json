@@ -9,7 +9,8 @@
   "support_resistance": {
     "order": 5,
     "cluster_threshold": 0.02,
+    "flip_tolerance": 0.01,
     "patterns_folder": "patterns",
-    "description": "order: nombre de bougies de chaque côté pour détecter un extremum local. cluster_threshold: seuil de regroupement des niveaux proches (2%)"
+    "description": "order: nombre de bougies de chaque côté pour détecter un extremum local. cluster_threshold: seuil de regroupement des niveaux proches (2%). flip_tolerance: tolérance pour détecter qu'on touche un niveau (1%)"
   }
 }

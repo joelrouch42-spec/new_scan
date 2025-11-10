@@ -126,17 +126,87 @@ class StockScanner:
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
+    def detect_flips(self, df: pd.DataFrame, breakout_history: List[Dict]) -> Optional[Dict]:
+        """Détecte les role reversals (flip) - quand un ancien support devient résistance ou vice versa"""
+        if len(df) < 2 or not breakout_history:
+            return None
+
+        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
+
+        last_idx = len(df) - 1
+        current_high = float(df['High'].iloc[last_idx])
+        current_low = float(df['Low'].iloc[last_idx])
+        prev_close = float(df['Close'].iloc[last_idx - 1])
+        current_close = float(df['Close'].iloc[last_idx])
+
+        # Parcourt l'historique des breakouts pour détecter les flips
+        for breakout in breakout_history:
+            level = breakout['level']
+            original_type = breakout['original_type']
+
+            # Vérifie si on est proche du niveau (dans la tolérance)
+            tolerance_range = level * flip_tolerance
+
+            # Cas 1: Ancien resistance → nouveau support
+            # Le prix revient toucher le niveau PAR EN DESSOUS
+            if original_type == 'resistance':
+                # Le prix doit venir du bas et toucher le niveau
+                if (prev_close < level and
+                    current_high >= level - tolerance_range and
+                    current_high <= level + tolerance_range):
+                    return {
+                        'type': 'flip_resistance_to_support',
+                        'level': level,
+                        'original_type': 'resistance',
+                        'new_type': 'support',
+                        'close': current_close
+                    }
+
+            # Cas 2: Ancien support → nouveau resistance
+            # Le prix revient toucher le niveau PAR AU DESSUS
+            elif original_type == 'support':
+                # Le prix doit venir du haut et toucher le niveau
+                if (prev_close > level and
+                    current_low <= level + tolerance_range and
+                    current_low >= level - tolerance_range):
+                    return {
+                        'type': 'flip_support_to_resistance',
+                        'level': level,
+                        'original_type': 'support',
+                        'new_type': 'resistance',
+                        'close': current_close
+                    }
+
+        return None
+
+    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str, breakout_history: Optional[List[Dict]] = None):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
         filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
+
+        # Charge l'historique existant si présent
+        existing_history = []
+        if os.path.exists(filename):
+            try:
+                with open(filename, 'r') as f:
+                    existing_data = json.load(f)
+                    existing_history = existing_data.get('breakout_history', [])
+            except:
+                pass
+
+        # Utilise l'historique fourni ou conserve l'existant
+        if breakout_history is not None:
+            final_history = breakout_history
+        else:
+            final_history = existing_history
 
         data = {
             'symbol': symbol,
             'date': date,
             'support_levels': support_levels,
             'resistance_levels': resistance_levels,
+            'breakout_history': final_history,
             'updated': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
         }
 
@@ -154,6 +224,18 @@ class StockScanner:
             data = json.load(f)
 
         return data.get('support_levels', []), data.get('resistance_levels', [])
+
+    def load_breakout_history(self, symbol: str, date: str) -> List[Dict]:
+        """Charge l'historique des breakouts depuis le fichier"""
+        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
+
+        if not os.path.exists(filename):
+            return []
+
+        with open(filename, 'r') as f:
+            data = json.load(f)
+
+        return data.get('breakout_history', [])
 
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
@@ -229,6 +311,9 @@ class StockScanner:
 
             total_candles = len(df)
 
+            # Initialise l'historique des breakouts pour ce symbole
+            breakout_history = []
+
             # Boucle de test: bougie 0 = la plus récente, bougie N = N bougies en arrière
             for candle_nb in range(test_start, test_stop + 1):
                 # Position dans le df: on enlève les N dernières bougies
@@ -243,14 +328,27 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
-                # Sauvegarde les S/R pour la première bougie testée (la plus récente)
-                if candle_nb == test_start:
-                    self.save_sr_levels(symbol, support_levels, resistance_levels, today)
+                # Détecte les flips (role reversals)
+                flip = self.detect_flips(df_until_pos, breakout_history)
+                if flip:
+                    print(f"{symbol}: Bougie {candle_nb}: FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position
                 breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
                 if breakout:
                     print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+
+                    # Ajoute le breakout à l'historique
+                    breakout_history.append({
+                        'level': breakout['level'],
+                        'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
+                        'breakout_candle': candle_nb,
+                        'breakout_date': today
+                    })
+
+                # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
+                if candle_nb == test_start:
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
@@ -337,6 +435,54 @@ class StockScanner:
 
         return None
 
+    def check_realtime_flip(self, bars_data: Dict, breakout_history: List[Dict]) -> Optional[Dict]:
+        """Vérifie si un flip est en cours avec les données temps réel"""
+        if not breakout_history:
+            return None
+
+        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
+
+        prev_close = bars_data['prev_close']
+        current_high = bars_data['current_high']
+        current_low = bars_data['current_low']
+        current_close = bars_data['current_close']
+
+        # Parcourt l'historique des breakouts pour détecter les flips
+        for breakout in breakout_history:
+            level = breakout['level']
+            original_type = breakout['original_type']
+
+            # Vérifie si on est proche du niveau (dans la tolérance)
+            tolerance_range = level * flip_tolerance
+
+            # Cas 1: Ancien resistance → nouveau support
+            if original_type == 'resistance':
+                if (prev_close < level and
+                    current_high >= level - tolerance_range and
+                    current_high <= level + tolerance_range):
+                    return {
+                        'type': 'flip_resistance_to_support',
+                        'level': level,
+                        'original_type': 'resistance',
+                        'new_type': 'support',
+                        'close': current_close
+                    }
+
+            # Cas 2: Ancien support → nouveau resistance
+            elif original_type == 'support':
+                if (prev_close > level and
+                    current_low <= level + tolerance_range and
+                    current_low >= level - tolerance_range):
+                    return {
+                        'type': 'flip_support_to_resistance',
+                        'level': level,
+                        'original_type': 'support',
+                        'new_type': 'resistance',
+                        'close': current_close
+                    }
+
+        return None
+
     def run_realtime(self):
         """Execute le mode temps réel"""
         realtime_config = self.settings['realtime']
@@ -355,6 +501,7 @@ class StockScanner:
         for item in watchlist:
             symbol = item['symbol']
             support_levels, resistance_levels = self.load_sr_levels(symbol, today)
+            breakout_history = self.load_breakout_history(symbol, today)
 
             if not support_levels and not resistance_levels:
                 print(f"{symbol}: Pas de S/R pour {today} - lancer --backtest d'abord")
@@ -362,9 +509,10 @@ class StockScanner:
             else:
                 sr_data[symbol] = {
                     'support_levels': support_levels,
-                    'resistance_levels': resistance_levels
+                    'resistance_levels': resistance_levels,
+                    'breakout_history': breakout_history
                 }
-                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances chargés")
+                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances, {len(breakout_history)} breakouts chargés")
 
         print()
 
@@ -385,12 +533,18 @@ class StockScanner:
 
                     support_levels = sr_data[symbol]['support_levels']
                     resistance_levels = sr_data[symbol]['resistance_levels']
+                    breakout_history = sr_data[symbol]['breakout_history']
 
                     # Récupère les données IBKR
                     bars_data = self.get_last_bars_ibkr(ib, symbol)
 
                     if not bars_data:
                         continue
+
+                    # Vérifie flip
+                    flip = self.check_realtime_flip(bars_data, breakout_history)
+                    if flip:
+                        print(f"FLIP: {symbol} ${bars_data['current_close']:.2f} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
                     # Vérifie breakout
                     breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
