@@ -23,7 +23,7 @@ class StockScanner:
 
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
-        self.config_file = self.settings['config_file']
+        self.config_file = 'config.txt'
         self.patterns_folder = self.patterns_config['output']['patterns_folder']
 
     def load_watchlist(self):

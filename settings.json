@@ -1,6 +1,5 @@
 {
   "data_folder": "data",
-  "config_file": "config.txt",
   "backtest": {
     "candle_nb": 120,
     "interval": "1d",
