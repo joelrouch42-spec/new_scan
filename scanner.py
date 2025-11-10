@@ -235,7 +235,7 @@ class StockScanner:
                 # Détecte les breakouts
                 breakout = self.detect_breakouts(df, support_levels, resistance_levels)
                 if breakout:
-                    print(f"  🔥 BREAKOUT détecté: {breakout['type']} à {breakout['level']:.2f}")
+                    print(f"  BREAKOUT: {breakout['type']} à {breakout['level']:.2f}")
                 else:
                     print(f"  Pas de breakout")
 
@@ -389,7 +389,7 @@ class StockScanner:
                     # Vérifie breakout
                     breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
                     if breakout:
-                        print(f"  🔥 BREAKOUT TEMPS RÉEL: {breakout['type']} à {breakout['level']:.2f}")
+                        print(f"  BREAKOUT: {breakout['type']} à {breakout['level']:.2f}")
 
                 print(f"\nProchaine mise à jour dans {update_interval}s...")
                 time.sleep(update_interval)
