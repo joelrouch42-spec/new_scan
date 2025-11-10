@@ -100,7 +100,7 @@ class StockScanner:
 
         return support_clusters, resistance_clusters
 
-    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
+    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], symbol: str = None) -> Optional[Dict]:
         """Détecte les breakouts de support/résistance"""
         if len(df) < 2:
             return None
@@ -110,13 +110,6 @@ class StockScanner:
         current_low = float(df['Low'].iloc[last_idx])
         prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
-
-        # Log pour debug MSTR
-        symbol_col = df.get('Symbol', df.get('symbol', None))
-        if symbol_col is not None and len(symbol_col) > 0:
-            symbol = symbol_col.iloc[0] if hasattr(symbol_col.iloc[0], 'upper') else None
-        else:
-            symbol = None
 
         # Détection breakout résistance (vers le haut)
         for resistance in resistance_levels:
@@ -146,7 +139,7 @@ class StockScanner:
 
         return None
 
-    def detect_flips(self, df: pd.DataFrame, breakout_history: List[Dict]) -> Optional[Dict]:
+    def detect_flips(self, df: pd.DataFrame, breakout_history: List[Dict], symbol: str = None) -> Optional[Dict]:
         """Détecte les role reversals (flip) - quand un ancien support devient résistance ou vice versa"""
         if len(df) < 2 or not breakout_history:
             return None
@@ -166,6 +159,13 @@ class StockScanner:
 
             # Vérifie si on est proche du niveau (dans la tolérance)
             tolerance_range = level * flip_tolerance
+
+            if symbol == 'MSTR':
+                print(f"    Test flip {original_type} @ {level:.2f}: tolerance={tolerance_range:.2f}")
+                if original_type == 'resistance':
+                    print(f"      current_low={current_low:.2f} dans [{level - tolerance_range:.2f}, {level + tolerance_range:.2f}]? {current_low >= level - tolerance_range and current_low <= level + tolerance_range}")
+                else:
+                    print(f"      current_high={current_high:.2f} dans [{level - tolerance_range:.2f}, {level + tolerance_range:.2f}]? {current_high >= level - tolerance_range and current_high <= level + tolerance_range}")
 
             # Cas 1: Ancien resistance → nouveau support
             # Après un breakout de résistance, le prix revient tester le niveau
@@ -353,7 +353,8 @@ class StockScanner:
                 # Log pour MSTR
                 if symbol == 'MSTR':
                     last_row = df_until_pos.iloc[-1]
-                    print(f"\n{symbol}: Bougie {candle_nb}:")
+                    date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
+                    print(f"\n{symbol}: Bougie {candle_nb} ({date_str}):")
                     print(f"  Prix: High={last_row['High']:.2f}, Low={last_row['Low']:.2f}, Close={last_row['Close']:.2f}")
                     print(f"  S/R: {len(support_levels)} supports, {len(resistance_levels)} résistances")
                     if support_levels:
@@ -367,13 +368,13 @@ class StockScanner:
 
                 # Détecte les flips (role reversals) si activé
                 if self.is_pattern_enabled('flips'):
-                    flip = self.detect_flips(df_until_pos, breakout_history)
+                    flip = self.detect_flips(df_until_pos, breakout_history, symbol)
                     if flip:
                         print(f"{symbol}: Bougie {candle_nb}: FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
                 if self.is_pattern_enabled('breakouts'):
-                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
+                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, symbol)
                     if breakout:
                         print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
