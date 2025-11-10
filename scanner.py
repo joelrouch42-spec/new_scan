@@ -383,15 +383,12 @@ class StockScanner:
                     if not bars_data:
                         continue
 
-                    # Affiche le prix
-                    print(f"{symbol}: ${bars_data['current_close']:.2f} (S:{len(support_levels)} R:{len(resistance_levels)})")
-
                     # Vérifie breakout
                     breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
                     if breakout:
+                        print(f"{symbol}: ${bars_data['current_close']:.2f} (S:{len(support_levels)} R:{len(resistance_levels)})")
                         print(f"  BREAKOUT: {breakout['type']} à {breakout['level']:.2f}")
 
-                print(f"\nProchaine mise à jour dans {update_interval}s...")
                 time.sleep(update_interval)
 
         except KeyboardInterrupt:
