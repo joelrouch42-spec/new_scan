@@ -365,8 +365,6 @@ class StockScanner:
 
         try:
             while True:
-                print(f"\n[{datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')}] Scan en cours...")
-
                 for item in watchlist:
                     symbol = item['symbol']
 
