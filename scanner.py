@@ -310,11 +310,20 @@ class StockScanner:
                 # Fallback sur Yahoo si pas assez de données
                 return self.download_yahoo_data(symbol, candle_nb, interval)
 
-            # Convertir en DataFrame
+            # Convertir en DataFrame avec conversion timezone EST
             data = []
+            est_tz = ZoneInfo('America/New_York')
+
             for bar in bars[-candle_nb:]:
+                # Convertir la date en EST si elle a une timezone, sinon assumer qu'elle est déjà en EST
+                if hasattr(bar.date, 'tzinfo') and bar.date.tzinfo is not None:
+                    date_est = bar.date.astimezone(est_tz)
+                else:
+                    # Si pas de timezone, on assume que c'est déjà en EST
+                    date_est = bar.date
+
                 data.append({
-                    'Date': bar.date.strftime('%Y-%m-%d'),
+                    'Date': date_est.strftime('%Y-%m-%d'),
                     'Open': bar.open,
                     'High': bar.high,
                     'Low': bar.low,
