@@ -325,8 +325,8 @@ class StockScanner:
             # Initialise l'historique des breakouts pour ce symbole
             breakout_history = []
 
-            # Boucle de test: bougie 0 = la plus récente, bougie N = N bougies en arrière
-            for candle_nb in range(test_start, test_stop + 1):
+            # Boucle de test: du passé vers le présent (de test_stop vers test_start)
+            for candle_nb in range(test_stop, test_start - 1, -1):
                 # Position dans le df: on enlève les N dernières bougies
                 current_pos = total_candles - candle_nb
 
