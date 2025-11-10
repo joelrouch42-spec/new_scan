@@ -58,11 +58,29 @@ class StockScanner:
         """Vérifie si le fichier existe"""
         return os.path.exists(filepath)
 
+    def count_touches(self, df: pd.DataFrame, level: float, tolerance: float, is_support: bool) -> int:
+        """Compte combien de fois un niveau a été testé"""
+        touches = 0
+        for i in range(len(df)):
+            if is_support:
+                # Pour un support, on regarde les lows
+                price = df['Low'].iloc[i]
+            else:
+                # Pour une résistance, on regarde les highs
+                price = df['High'].iloc[i]
+
+            # Si le prix touche le niveau (dans la tolérance)
+            if abs(price - level) / level <= tolerance:
+                touches += 1
+
+        return touches
+
     def find_support_resistance(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
         """Trouve les niveaux de support et résistance"""
         sr_config = self.patterns_config['support_resistance']
         order = sr_config['order']
         cluster_threshold = sr_config['cluster_threshold']
+        min_touches = sr_config.get('min_touches', 2)
 
         highs = df['High'].values
         lows = df['Low'].values
@@ -98,7 +116,20 @@ class StockScanner:
         support_clusters = cluster_levels(support_levels)
         resistance_clusters = cluster_levels(resistance_levels)
 
-        return support_clusters, resistance_clusters
+        # Filtre les niveaux par nombre de touches minimum
+        validated_supports = []
+        for level in support_clusters:
+            touches = self.count_touches(df, level, cluster_threshold, is_support=True)
+            if touches >= min_touches:
+                validated_supports.append(level)
+
+        validated_resistances = []
+        for level in resistance_clusters:
+            touches = self.count_touches(df, level, cluster_threshold, is_support=False)
+            if touches >= min_touches:
+                validated_resistances.append(level)
+
+        return validated_supports, validated_resistances
 
     def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, symbol: str = None) -> Optional[Dict]:
         """Détecte les breakouts de support/résistance
