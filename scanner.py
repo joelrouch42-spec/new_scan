@@ -24,7 +24,7 @@ class StockScanner:
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
-        self.patterns_folder = self.patterns_config['output']['patterns_folder']
+        self.patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
