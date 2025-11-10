@@ -278,7 +278,7 @@ class StockScanner:
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[Dict], resistance_levels: List[Dict], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None):
+    def save_sr_levels(self, symbol: str, support_levels: List[Dict], resistance_levels: List[Dict], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None, data_source: Optional[str] = None):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
@@ -311,6 +311,7 @@ class StockScanner:
         data = {
             'symbol': symbol,
             'date': date,
+            'data_source': data_source,
             'support_levels': support_levels,
             'resistance_levels': resistance_levels,
             'breakout_history': final_history,
@@ -386,7 +387,7 @@ class StockScanner:
 
             if not qualified:
                 ib.disconnect()
-                return None
+                return None, None
 
             contract = qualified[0]
 
@@ -441,7 +442,7 @@ class StockScanner:
                 })
 
             df = pd.DataFrame(data)
-            return df
+            return df, 'ibkr'
 
         except Exception as e:
             return self.download_yahoo_data(symbol, candle_nb, interval)
@@ -468,17 +469,17 @@ class StockScanner:
 
             if df.empty:
                 print(f"Aucune donnée disponible pour {symbol}")
-                return None
+                return None, None
 
             # Prendre les N dernières bougies
             df = df.tail(candle_nb)
 
             df.reset_index(inplace=True)
             df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
-            return df
+            return df, 'yahoo'
         except Exception as e:
             print(f"Erreur lors du téléchargement de {symbol}: {e}")
-            return None
+            return None, None
 
     def run_backtest(self):
         """Execute le mode backtest"""
@@ -509,11 +510,13 @@ class StockScanner:
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
             # Télécharge ou charge les données
+            data_source = None
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
+                data_source = 'cached'
             else:
                 # TEMPORAIRE: Utilise IBKR au lieu de Yahoo pour éviter les gaps
-                df = self.download_ibkr_data(symbol, total_candles_needed, interval)
+                df, data_source = self.download_ibkr_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
@@ -571,7 +574,7 @@ class StockScanner:
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
                 if candle_nb == test_start:
-                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction)
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction, data_source)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
@@ -817,7 +820,7 @@ class StockScanner:
                             })
 
                             # Sauvegarde le nouveau statut
-                            self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction)
+                            self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction, 'realtime')
 
                 time.sleep(update_interval)
 
