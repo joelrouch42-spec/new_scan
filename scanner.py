@@ -58,15 +58,41 @@ class StockScanner:
         """Vérifie si le fichier existe"""
         return os.path.exists(filepath)
 
-    def find_support_resistance(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
-        """Trouve les niveaux de support et résistance"""
+    def calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
+        """Calcule l'Average True Range"""
+        high = df['High'].values
+        low = df['Low'].values
+        close = df['Close'].values
+
+        if len(df) < period:
+            period = len(df)
+
+        tr = []
+        for i in range(1, len(df)):
+            h_l = high[i] - low[i]
+            h_pc = abs(high[i] - close[i-1])
+            l_pc = abs(low[i] - close[i-1])
+            tr.append(max(h_l, h_pc, l_pc))
+
+        if len(tr) < period:
+            return np.mean(tr) if tr else 0
+
+        return np.mean(tr[-period:])
+
+    def find_support_resistance(self, df: pd.DataFrame) -> Tuple[List[Dict], List[Dict]]:
+        """Trouve les niveaux de support et résistance avec scores"""
         sr_config = self.patterns_config['support_resistance']
         order = sr_config['order']
         cluster_threshold = sr_config['cluster_threshold']
         min_touches = sr_config.get('min_touches', 2)
+        use_atr = sr_config.get('use_atr', False)
+        atr_period = sr_config.get('atr_period', 14)
+        atr_multiplier = sr_config.get('atr_multiplier', 2.0)
+        max_levels = sr_config.get('max_levels', 5)
 
         highs = df['High'].values
         lows = df['Low'].values
+        closes = df['Close'].values
         n = len(df)
 
         if order < 1:
@@ -74,38 +100,87 @@ class StockScanner:
         if n <= (2 * order):
             order = max(1, (n - 1) // 2)
 
+        # Calcule le seuil de clustering
+        if use_atr:
+            atr = self.calculate_atr(df, atr_period)
+            current_price = closes[-1]
+            threshold = (atr * atr_multiplier) / current_price if current_price > 0 else cluster_threshold
+        else:
+            threshold = cluster_threshold
+
         resistance_idx = argrelextrema(highs, np.greater, order=order)[0]
         support_idx = argrelextrema(lows, np.less, order=order)[0]
 
         resistance_levels = highs[resistance_idx] if resistance_idx.size else np.array([])
         support_levels = lows[support_idx] if support_idx.size else np.array([])
 
-        def cluster_levels(levels: np.ndarray, min_touches: int) -> List[float]:
+        def cluster_and_score_levels(levels: np.ndarray, indices: np.ndarray, is_support: bool, min_touches: int) -> List[Dict]:
             if len(levels) == 0:
                 return []
-            levels_sorted = sorted(levels)
-            clusters: List[float] = []
-            current_cluster = [levels_sorted[0]]
-            for level in levels_sorted[1:]:
-                denom = current_cluster[-1] if current_cluster[-1] != 0 else 1.0
-                if abs(level - current_cluster[-1]) / denom < cluster_threshold:
-                    current_cluster.append(level)
+
+            # Combine levels avec leurs indices pour tracking temporel
+            level_data = list(zip(levels, indices))
+            level_data_sorted = sorted(level_data, key=lambda x: x[0])
+
+            clusters = []
+            current_cluster = [level_data_sorted[0]]
+
+            for data in level_data_sorted[1:]:
+                level, idx = data
+                prev_level = current_cluster[-1][0]
+                denom = prev_level if prev_level != 0 else 1.0
+
+                if abs(level - prev_level) / denom < threshold:
+                    current_cluster.append(data)
                 else:
-                    # Ne garde le cluster que s'il a assez d'extrema
                     if len(current_cluster) >= min_touches:
-                        clusters.append(float(np.mean(current_cluster)))
-                    current_cluster = [level]
+                        clusters.append(current_cluster)
+                    current_cluster = [data]
+
             # Dernier cluster
             if len(current_cluster) >= min_touches:
-                clusters.append(float(np.mean(current_cluster)))
-            return clusters
+                clusters.append(current_cluster)
 
-        support_clusters = cluster_levels(support_levels, min_touches)
-        resistance_clusters = cluster_levels(resistance_levels, min_touches)
+            # Calcule le score pour chaque cluster
+            scored_levels = []
+            for cluster in clusters:
+                cluster_levels = [x[0] for x in cluster]
+                cluster_indices = [x[1] for x in cluster]
 
-        return support_clusters, resistance_clusters
+                avg_level = float(np.mean(cluster_levels))
 
-    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, symbol: str = None) -> Optional[Dict]:
+                # Score = touches × force_réaction × proximité_temporelle
+                num_touches = len(cluster)
+
+                # Force de réaction: variance des niveaux (moins = mieux)
+                if len(cluster_levels) > 1:
+                    variance = np.std(cluster_levels)
+                    force_reaction = 1.0 / (1.0 + variance / avg_level) if avg_level > 0 else 0.5
+                else:
+                    force_reaction = 1.0
+
+                # Proximité temporelle: plus récent = mieux
+                max_idx = max(cluster_indices)
+                proximity = (max_idx + 1) / n  # Normalise entre 0 et 1
+
+                score = num_touches * force_reaction * proximity
+
+                scored_levels.append({
+                    'level': avg_level,
+                    'score': score,
+                    'touches': num_touches
+                })
+
+            # Garde les top max_levels meilleurs scores
+            scored_levels.sort(key=lambda x: x['score'], reverse=True)
+            return scored_levels[:max_levels]
+
+        support_scored = cluster_and_score_levels(support_levels, support_idx, True, min_touches)
+        resistance_scored = cluster_and_score_levels(resistance_levels, resistance_idx, False, min_touches)
+
+        return support_scored, resistance_scored
+
+    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[Dict], resistance_levels: List[Dict], last_breakout_direction: Optional[str] = None, symbol: str = None) -> Optional[Dict]:
         """Détecte les breakouts de support/résistance
 
         Args:
@@ -122,11 +197,14 @@ class StockScanner:
 
         # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
         if last_breakout_direction != 'up':
-            for resistance in resistance_levels:
+            for r in resistance_levels:
+                resistance = r['level']
                 if prev_close < resistance and current_high > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
+                        'score': r['score'],
+                        'touches': r['touches'],
                         'close': current_close,
                         'direction': 'up',
                         'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
@@ -134,11 +212,14 @@ class StockScanner:
 
         # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
         if last_breakout_direction != 'down':
-            for support in support_levels:
+            for s in support_levels:
+                support = s['level']
                 if prev_close > support and current_low < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
+                        'score': s['score'],
+                        'touches': s['touches'],
                         'close': current_close,
                         'direction': 'down',
                         'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
@@ -197,7 +278,7 @@ class StockScanner:
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None):
+    def save_sr_levels(self, symbol: str, support_levels: List[Dict], resistance_levels: List[Dict], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
@@ -240,7 +321,7 @@ class StockScanner:
         with open(filename, 'w') as f:
             json.dump(data, f, indent=2)
 
-    def load_sr_levels(self, symbol: str, date: str) -> Tuple[List[float], List[float]]:
+    def load_sr_levels(self, symbol: str, date: str) -> Tuple[List[Dict], List[Dict]]:
         """Charge les niveaux S/R depuis le fichier"""
         filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
 
@@ -250,7 +331,17 @@ class StockScanner:
         with open(filename, 'r') as f:
             data = json.load(f)
 
-        return data.get('support_levels', []), data.get('resistance_levels', [])
+        # Les anciens fichiers peuvent avoir juste des floats, convertir en dicts
+        supports = data.get('support_levels', [])
+        resistances = data.get('resistance_levels', [])
+
+        # Convertir si ce sont des floats
+        if supports and isinstance(supports[0], (int, float)):
+            supports = [{'level': s, 'score': 0, 'touches': 0} for s in supports]
+        if resistances and isinstance(resistances[0], (int, float)):
+            resistances = [{'level': r, 'score': 0, 'touches': 0} for r in resistances]
+
+        return supports, resistances
 
     def load_breakout_history(self, symbol: str, date: str) -> List[Dict]:
         """Charge l'historique des breakouts depuis le fichier"""
@@ -465,7 +556,7 @@ class StockScanner:
                     if breakout:
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {breakout['type']} à {breakout['level']:.2f} [score: {breakout['score']:.2f}]")
 
                         # Met à jour la direction du dernier breakout
                         last_breakout_direction = breakout['direction']
@@ -547,7 +638,7 @@ class StockScanner:
             print(f"Erreur récupération {symbol}: {e}")
             return None
 
-    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None) -> Optional[Dict]:
+    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[Dict], resistance_levels: List[Dict], last_breakout_direction: Optional[str] = None) -> Optional[Dict]:
         """Vérifie si un breakout est en cours avec les données temps réel
 
         Args:
@@ -560,11 +651,14 @@ class StockScanner:
 
         # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
         if last_breakout_direction != 'up':
-            for resistance in resistance_levels:
+            for r in resistance_levels:
+                resistance = r['level']
                 if prev_close < resistance and current_high > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
+                        'score': r['score'],
+                        'touches': r['touches'],
                         'close': current_close,
                         'direction': 'up',
                         'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
@@ -572,11 +666,14 @@ class StockScanner:
 
         # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
         if last_breakout_direction != 'down':
-            for support in support_levels:
+            for s in support_levels:
+                support = s['level']
                 if prev_close > support and current_low < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
+                        'score': s['score'],
+                        'touches': s['touches'],
                         'close': current_close,
                         'direction': 'down',
                         'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
@@ -705,7 +802,7 @@ class StockScanner:
                     if self.is_pattern_enabled('breakouts'):
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels, last_breakout_direction)
                         if breakout:
-                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
+                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f} [score: {breakout['score']:.2f}]")
 
                             # Met à jour la direction et sauvegarde
                             last_breakout_direction = breakout['direction']
