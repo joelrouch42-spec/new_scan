@@ -227,25 +227,30 @@ class StockScanner:
             if df is None or len(df) == 0:
                 continue
 
-            # Boucle de test du passé vers le présent
-            for current_pos in range(test_start, test_stop + 1):
-                if current_pos > len(df):
+            total_candles = len(df)
+
+            # Boucle de test: bougie 0 = la plus récente, bougie N = N bougies en arrière
+            for candle_nb in range(test_start, test_stop + 1):
+                # Position dans le df: on enlève les N dernières bougies
+                current_pos = total_candles - candle_nb
+
+                if current_pos <= 0:
                     break
 
-                # Prend les données jusqu'à la position actuelle
+                # Prend les données jusqu'à cette position (exclut les N dernières bougies)
                 df_until_pos = df.iloc[:current_pos].copy()
 
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
-                # Sauvegarde les S/R pour la dernière position (fin du test)
-                if current_pos == test_stop:
+                # Sauvegarde les S/R pour la première bougie testée (la plus récente)
+                if candle_nb == test_start:
                     self.save_sr_levels(symbol, support_levels, resistance_levels, today)
 
                 # Détecte breakout sur la dernière bougie de cette position
                 breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
                 if breakout:
-                    print(f"{symbol}: Bougie {current_pos}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+                    print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
