@@ -420,13 +420,17 @@ class StockScanner:
                 if self.is_pattern_enabled('flips'):
                     flip = self.detect_flips(df_until_pos, breakout_history, symbol)
                     if flip:
-                        print(f"{symbol}: Bougie {candle_nb}: FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                        last_row = df_until_pos.iloc[-1]
+                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
+                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
                 if self.is_pattern_enabled('breakouts'):
                     breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, symbol)
                     if breakout:
-                        print(f"{symbol}: Bougie {candle_nb}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+                        last_row = df_until_pos.iloc[-1]
+                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
+                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
                         # Ajoute le breakout à l'historique
                         breakout_history.append({
@@ -485,11 +489,20 @@ class StockScanner:
                 return None
 
             # Retourne les 2 dernières bougies
+            # Convertir la date en EST
+            est_tz = ZoneInfo('America/New_York')
+            current_date = bars[-1].date
+            if hasattr(current_date, 'tzinfo') and current_date.tzinfo is not None:
+                date_est = current_date.astimezone(est_tz)
+            else:
+                date_est = current_date
+
             return {
                 'prev_close': bars[-2].close,
                 'current_high': bars[-1].high,
                 'current_low': bars[-1].low,
-                'current_close': bars[-1].close
+                'current_close': bars[-1].close,
+                'current_date': date_est.strftime('%Y-%m-%d')
             }
 
         except Exception as e:
@@ -637,13 +650,13 @@ class StockScanner:
                     if self.is_pattern_enabled('flips'):
                         flip = self.check_realtime_flip(bars_data, breakout_history)
                         if flip:
-                            print(f"FLIP: {symbol} ${bars_data['current_close']:.2f} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                            print(f"FLIP: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
 
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
                         if breakout:
-                            print(f"BREAKOUT: {symbol} ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
+                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {breakout['type']} à {breakout['level']:.2f}")
 
                 time.sleep(update_interval)
 
