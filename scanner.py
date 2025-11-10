@@ -227,8 +227,6 @@ class StockScanner:
             if df is None or len(df) == 0:
                 continue
 
-            print(f"\n{symbol}:")
-
             # Boucle de test du passé vers le présent
             for current_pos in range(test_start, test_stop + 1):
                 if current_pos > len(df):
@@ -247,7 +245,7 @@ class StockScanner:
                 # Détecte breakout sur la dernière bougie de cette position
                 breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
                 if breakout:
-                    print(f"  Bougie {current_pos}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
+                    print(f"{symbol}: Bougie {current_pos}: BREAKOUT {breakout['type']} à {breakout['level']:.2f}")
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
