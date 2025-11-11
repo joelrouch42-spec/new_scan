@@ -116,147 +116,10 @@ class StockScanner:
 
         return support_clusters, resistance_clusters
 
-    def detect_step_1_breakout(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
-        """Détecte les cassures step 1: bougie ENTIÈRE au-delà du niveau"""
-        if len(df) < 1:
+    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
+        """Détecte les breakouts de support/résistance"""
+        if len(df) < 2:
             return None
-
-        last_idx = len(df) - 1
-        current_high = float(df['High'].iloc[last_idx])
-        current_low = float(df['Low'].iloc[last_idx])
-        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
-
-        # Détection breakout résistance: bougie ENTIÈRE au-dessus (LOW > résistance)
-        for resistance in resistance_levels:
-            if current_low > resistance:
-                return {
-                    'type': 'step_1',
-                    'level': resistance,
-                    'original_type': 'resistance',
-                    'direction': 'up',
-                    'date': current_date
-                }
-
-        # Détection breakdown support: bougie ENTIÈRE en dessous (HIGH < support)
-        for support in support_levels:
-            if current_high < support:
-                return {
-                    'type': 'step_1',
-                    'level': support,
-                    'original_type': 'support',
-                    'direction': 'down',
-                    'date': current_date
-                }
-
-        return None
-
-    def detect_step_2_pullback(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
-        """Détecte les retests step 2: bougie touche ou casse le niveau"""
-        if len(df) < 1 or not step_1_list:
-            return None
-
-        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
-        last_idx = len(df) - 1
-        current_high = float(df['High'].iloc[last_idx])
-        current_low = float(df['Low'].iloc[last_idx])
-        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
-
-        # Parcourt les step 1 qui n'ont pas encore de step 2
-        for i, step_1 in enumerate(step_1_list):
-            if step_1.get('step_2_detected', False):
-                continue
-
-            level = step_1['level']
-            original_type = step_1['original_type']
-            tolerance_range = level * flip_tolerance
-
-            # Cas 1: Après breakout résistance UP, retest
-            # Bougie touche la résistance (HIGH ou LOW proche du niveau)
-            if original_type == 'resistance' and step_1['direction'] == 'up':
-                if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
-                    (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
-                    step_1_list[i]['step_2_detected'] = True
-                    step_1_list[i]['step_2_date'] = current_date  # Sauvegarde la date ici
-                    return {
-                        'type': 'step_2',
-                        'level': level,
-                        'original_type': original_type,
-                        'direction': step_1['direction'],
-                        'date': current_date
-                    }
-
-            # Cas 2: Après breakdown support DOWN, retest
-            # Bougie touche le support (HIGH ou LOW proche du niveau)
-            elif original_type == 'support' and step_1['direction'] == 'down':
-                if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
-                    (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
-                    step_1_list[i]['step_2_detected'] = True
-                    step_1_list[i]['step_2_date'] = current_date  # Sauvegarde la date ici
-                    return {
-                        'type': 'step_2',
-                        'level': level,
-                        'original_type': original_type,
-                        'direction': step_1['direction'],
-                        'date': current_date
-                    }
-
-        return None
-
-    def detect_step_3_confirmation(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
-        """Détecte les confirmations step 3: bougie CLOSE au-dessus/en dessous du niveau"""
-        if len(df) < 1 or not step_1_list:
-            return None
-
-        last_idx = len(df) - 1
-        current_close = float(df['Close'].iloc[last_idx])
-        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
-
-        # Parcourt les step 1 qui ont un step 2 mais pas encore de step 3
-        for i, step_1 in enumerate(step_1_list):
-            if not step_1.get('step_2_detected', False) or step_1.get('step_3_detected', False):
-                continue
-
-            level = step_1['level']
-            original_type = step_1['original_type']
-
-            # Cas 1: Après breakout résistance, confirmation
-            # Bougie CLOSE au-dessus de la résistance
-            if original_type == 'resistance' and step_1['direction'] == 'up':
-                if current_close > level:
-                    step_1_list[i]['step_3_detected'] = True
-                    step_1_list[i]['step_3_date'] = current_date  # Sauvegarde la date ici
-                    return {
-                        'type': 'step_3',
-                        'level': level,
-                        'original_type': original_type,
-                        'new_type': 'support',
-                        'direction': 'up',
-                        'date': current_date
-                    }
-
-            # Cas 2: Après breakdown support, confirmation
-            # Bougie CLOSE en dessous du support
-            elif original_type == 'support' and step_1['direction'] == 'down':
-                if current_close < level:
-                    step_1_list[i]['step_3_detected'] = True
-                    step_1_list[i]['step_3_date'] = current_date  # Sauvegarde la date ici
-                    return {
-                        'type': 'step_3',
-                        'level': level,
-                        'original_type': original_type,
-                        'new_type': 'resistance',
-                        'direction': 'down',
-                        'date': current_date
-                    }
-
-        return None
-
-    def detect_flips(self, df: pd.DataFrame, breakout_history: List[Dict], symbol: str = None) -> Optional[Dict]:
-        """Détecte les role reversals (flip) - quand un ancien support devient résistance ou vice versa"""
-        if len(df) < 2 or not breakout_history:
-            return None
-
-        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
 
         last_idx = len(df) - 1
         current_high = float(df['High'].iloc[last_idx])
@@ -264,103 +127,39 @@ class StockScanner:
         prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
 
-        # Parcourt l'historique des breakouts pour détecter les flips
-        for i, breakout in enumerate(breakout_history):
-            # Ignore si un flip a déjà été détecté pour ce breakout
-            if breakout.get('flip_detected', False):
-                continue
+        # Détection breakout résistance (vers le haut)
+        for resistance in resistance_levels:
+            if prev_close < resistance and current_high > resistance:
+                return {
+                    'type': 'resistance_breakout',
+                    'level': resistance,
+                    'close': current_close,
+                    'direction': 'up'
+                }
 
-            level = breakout['level']
-            original_type = breakout['original_type']
-
-            # Vérifie si on est proche du niveau (dans la tolérance)
-            tolerance_range = level * flip_tolerance
-
-            # Cas 1: Ancien resistance → nouveau support
-            # Après un breakout de résistance, le prix revient tester le niveau
-            if original_type == 'resistance':
-                # Le LOW de la bougie touche le niveau (retest par le haut)
-                if (current_low <= level + tolerance_range and
-                    current_low >= level - tolerance_range):
-                    # Marque le flip comme détecté
-                    breakout_history[i]['flip_detected'] = True
-                    return {
-                        'type': 'flip_resistance_to_support',
-                        'level': level,
-                        'original_type': 'resistance',
-                        'new_type': 'support',
-                        'close': current_close
-                    }
-
-            # Cas 2: Ancien support → nouveau resistance
-            # Après un breakdown de support, le prix revient tester le niveau
-            elif original_type == 'support':
-                # Le HIGH de la bougie touche le niveau (retest par le bas)
-                if (current_high >= level - tolerance_range and
-                    current_high <= level + tolerance_range):
-                    # Marque le flip comme détecté
-                    breakout_history[i]['flip_detected'] = True
-                    return {
-                        'type': 'flip_support_to_resistance',
-                        'level': level,
-                        'original_type': 'support',
-                        'new_type': 'resistance',
-                        'close': current_close
-                    }
+        # Détection breakdown support (vers le bas)
+        for support in support_levels:
+            if prev_close > support and current_low < support:
+                return {
+                    'type': 'support_breakdown',
+                    'level': support,
+                    'close': current_close,
+                    'direction': 'down'
+                }
 
         return None
 
-    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str, breakout_history: Optional[List[Dict]] = None, last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None):
+    def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
 
         filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
-
-        # Charge l'historique existant si présent
-        existing_history = []
-        existing_direction = None
-        existing_level = None
-        if os.path.exists(filename):
-            try:
-                with open(filename, 'r') as f:
-                    existing_data = json.load(f)
-                    existing_history = existing_data.get('breakout_history', [])
-                    existing_direction = existing_data.get('last_breakout_direction')
-                    existing_level = existing_data.get('last_breakout_level')
-            except:
-                pass
-
-        # Utilise l'historique fourni ou conserve l'existant
-        if breakout_history is not None:
-            final_history = breakout_history
-        else:
-            final_history = existing_history
-
-        # Utilise la direction fournie ou conserve l'existante
-        if last_breakout_direction is not None:
-            final_direction = last_breakout_direction
-        else:
-            final_direction = existing_direction
-
-        # Utilise le niveau fourni ou conserve l'existant
-        if last_breakout_level is not None:
-            final_level = last_breakout_level
-        else:
-            final_level = existing_level
-
-        # Limiter l'historique à 50 breakouts max pour éviter croissance infinie
-        MAX_HISTORY = 50
-        if len(final_history) > MAX_HISTORY:
-            final_history = final_history[-MAX_HISTORY:]
 
         data = {
             'symbol': symbol,
             'date': date,
             'support_levels': support_levels,
             'resistance_levels': resistance_levels,
-            'breakout_history': final_history,
-            'last_breakout_direction': final_direction,
-            'last_breakout_level': final_level,
             'updated': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
         }
 
@@ -378,42 +177,6 @@ class StockScanner:
             data = json.load(f)
 
         return data.get('support_levels', []), data.get('resistance_levels', [])
-
-    def load_breakout_history(self, symbol: str, date: str) -> List[Dict]:
-        """Charge l'historique des breakouts depuis le fichier"""
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
-
-        if not os.path.exists(filename):
-            return []
-
-        with open(filename, 'r') as f:
-            data = json.load(f)
-
-        return data.get('breakout_history', [])
-
-    def load_last_breakout_direction(self, symbol: str, date: str) -> Optional[str]:
-        """Charge la direction du dernier breakout depuis le fichier"""
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
-
-        if not os.path.exists(filename):
-            return None
-
-        with open(filename, 'r') as f:
-            data = json.load(f)
-
-        return data.get('last_breakout_direction')
-
-    def load_last_breakout_level(self, symbol: str, date: str) -> Optional[float]:
-        """Charge le niveau du dernier breakout depuis le fichier"""
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
-
-        if not os.path.exists(filename):
-            return None
-
-        with open(filename, 'r') as f:
-            data = json.load(f)
-
-        return data.get('last_breakout_level')
 
     def download_ibkr_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis IBKR"""
@@ -545,110 +308,69 @@ class StockScanner:
                 annotation_position="right"
             )
 
-        # Marqueurs numérotés pour visualiser les étapes
-        step_1_dates = []
-        step_1_prices = []
-        step_1_texts = []
+        # Marqueurs pour les breakouts
+        breakout_up_dates = []
+        breakout_up_prices = []
+        breakout_up_texts = []
 
-        step_2_dates = []
-        step_2_prices = []
-        step_2_texts = []
-
-        step_3_dates = []
-        step_3_prices = []
-        step_3_texts = []
+        breakout_down_dates = []
+        breakout_down_prices = []
+        breakout_down_texts = []
 
         for pattern in detected_patterns:
             pattern_date = pattern['date']
             pattern_type = pattern['type']
             pattern_level = pattern['level']
+            pattern_close = pattern['close']
+            direction = pattern['direction']
 
-            if pattern_type == 'step_1':
-                step_1_dates.append(pattern_date)
-                step_1_prices.append(pattern['price'])
-                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_1_texts.append(f"1: Bougie entière au-delà<br>{direction} @ ${pattern_level:.2f}")
+            if pattern_type == 'resistance_breakout':
+                breakout_up_dates.append(pattern_date)
+                breakout_up_prices.append(pattern_level)
+                breakout_up_texts.append(f"BREAKOUT UP<br>Résistance @ ${pattern_level:.2f}<br>Close: ${pattern_close:.2f}")
 
-            elif pattern_type == 'step_2':
-                step_2_dates.append(pattern_date)
-                step_2_prices.append(pattern['price'])
-                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_2_texts.append(f"2: Retest<br>Bougie touche le niveau<br>{direction} @ ${pattern_level:.2f}")
+            elif pattern_type == 'support_breakdown':
+                breakout_down_dates.append(pattern_date)
+                breakout_down_prices.append(pattern_level)
+                breakout_down_texts.append(f"BREAKDOWN<br>Support @ ${pattern_level:.2f}<br>Close: ${pattern_close:.2f}")
 
-            elif pattern_type == 'step_3':
-                step_3_dates.append(pattern_date)
-                step_3_prices.append(pattern['price'])
-                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_3_texts.append(f"3: Confirmation<br>CLOSE {direction}<br>@ ${pattern_level:.2f}")
-
-        # Ajouter les marqueurs numéro 1 (cassure)
-        if step_1_dates:
-            for date, price, text in zip(step_1_dates, step_1_prices, step_1_texts):
-                fig.add_trace(
-                    go.Scatter(
-                        x=[date],
-                        y=[price],
-                        mode='markers+text',
-                        marker=dict(
-                            symbol='circle',
-                            size=20,
-                            color='yellow',
-                            line=dict(width=2, color='black')
-                        ),
-                        text='1',
-                        textfont=dict(size=14, color='black', family='Arial Black'),
-                        textposition='middle center',
-                        showlegend=False,
-                        hovertext=text,
-                        hoverinfo='text'
-                    )
+        # Ajouter les marqueurs de breakout UP (vert)
+        if breakout_up_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=breakout_up_dates,
+                    y=breakout_up_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='triangle-up',
+                        size=15,
+                        color='lime',
+                        line=dict(width=2, color='darkgreen')
+                    ),
+                    name='Breakout UP',
+                    hovertext=breakout_up_texts,
+                    hoverinfo='text'
                 )
+            )
 
-        # Ajouter les marqueurs numéro 2 (confirmation)
-        if step_2_dates:
-            for date, price, text in zip(step_2_dates, step_2_prices, step_2_texts):
-                fig.add_trace(
-                    go.Scatter(
-                        x=[date],
-                        y=[price],
-                        mode='markers+text',
-                        marker=dict(
-                            symbol='circle',
-                            size=20,
-                            color='orange',
-                            line=dict(width=2, color='black')
-                        ),
-                        text='2',
-                        textfont=dict(size=14, color='black', family='Arial Black'),
-                        textposition='middle center',
-                        showlegend=False,
-                        hovertext=text,
-                        hoverinfo='text'
-                    )
+        # Ajouter les marqueurs de breakout DOWN (rouge)
+        if breakout_down_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=breakout_down_dates,
+                    y=breakout_down_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='triangle-down',
+                        size=15,
+                        color='red',
+                        line=dict(width=2, color='darkred')
+                    ),
+                    name='Breakdown',
+                    hovertext=breakout_down_texts,
+                    hoverinfo='text'
                 )
-
-        # Ajouter les marqueurs numéro 3 (flip/retest)
-        if step_3_dates:
-            for date, price, text in zip(step_3_dates, step_3_prices, step_3_texts):
-                fig.add_trace(
-                    go.Scatter(
-                        x=[date],
-                        y=[price],
-                        mode='markers+text',
-                        marker=dict(
-                            symbol='circle',
-                            size=20,
-                            color='cyan',
-                            line=dict(width=2, color='black')
-                        ),
-                        text='3',
-                        textfont=dict(size=14, color='black', family='Arial Black'),
-                        textposition='middle center',
-                        showlegend=False,
-                        hovertext=text,
-                        hoverinfo='text'
-                    )
-                )
+            )
 
         # Mise en forme
         fig.update_layout(
@@ -759,9 +481,6 @@ class StockScanner:
 
             total_candles = len(df)
 
-            # Liste pour tracker les breakouts (step_1) et leurs états
-            step_1_list = []
-
             # Liste pour stocker les patterns détectés (pour le graphique)
             detected_patterns = []
 
@@ -779,83 +498,30 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
-                # STEP 1: Détecte cassure (bougie ENTIÈRE au-delà du niveau)
+                # Détecte breakouts
                 if self.is_pattern_enabled('breakouts'):
-                    step_1 = self.detect_step_1_breakout(df_until_pos, support_levels, resistance_levels)
-                    if step_1:
-                        # Ajoute à la liste de tracking
-                        step_1['step_2_detected'] = False
-                        step_1['step_2_date'] = None
-                        step_1['step_3_detected'] = False
-                        step_1['step_3_date'] = None
-                        step_1_list.append(step_1)
+                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
+                    if breakout:
+                        # Extrait la date de la dernière bougie
+                        current_date = df_until_pos['Date'].iloc[-1]
+
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': breakout['type'],
+                            'date': current_date,
+                            'level': breakout['level'],
+                            'close': breakout['close'],
+                            'direction': breakout['direction']
+                        })
 
                         if self.should_print_pattern('breakouts'):
-                            direction = 'UP' if step_1['direction'] == 'up' else 'DOWN'
-                            label = step_1['original_type']
-                            print(f"{symbol}: Bougie {candle_nb} ({step_1['date']}): STEP 1 - Cassure {direction} {label} à {step_1['level']:.2f}")
-
-                # STEP 2: Détecte retest (bougie touche le niveau)
-                if self.is_pattern_enabled('breakouts'):
-                    step_2 = self.detect_step_2_pullback(df_until_pos, step_1_list)
-                    if step_2:
-                        if self.should_print_pattern('breakouts'):
-                            direction = 'UP' if step_2['direction'] == 'up' else 'DOWN'
-                            print(f"{symbol}: Bougie {candle_nb} ({step_2['date']}): STEP 2 - Retest {direction} à {step_2['level']:.2f}")
-
-                # STEP 3: Détecte confirmation (bougie CLOSE au-dessus/en dessous)
-                if self.is_pattern_enabled('flips'):
-                    step_3 = self.detect_step_3_confirmation(df_until_pos, step_1_list)
-                    if step_3:
-                        # Trouve le step_1 correspondant et ajoute la séquence complète 1, 2, 3 au graphique
-                        for s1 in step_1_list:
-                            if s1['level'] == step_3['level'] and s1['original_type'] == step_3['original_type'] and s1.get('step_3_detected', False):
-                                # Ajoute la séquence complète 1, 2, 3 au graphique
-                                # Step 1
-                                detected_patterns.append({
-                                    'type': 'step_1',
-                                    'date': s1['date'],
-                                    'price': s1['level'],
-                                    'level': s1['level'],
-                                    'direction': s1['direction']
-                                })
-                                # Step 2
-                                detected_patterns.append({
-                                    'type': 'step_2',
-                                    'date': s1['step_2_date'],
-                                    'price': s1['level'],
-                                    'level': s1['level'],
-                                    'direction': s1['direction']
-                                })
-                                # Step 3
-                                detected_patterns.append({
-                                    'type': 'step_3',
-                                    'date': s1['step_3_date'],
-                                    'price': s1['level'],
-                                    'level': s1['level'],
-                                    'direction': s1['direction'],
-                                    'from': step_3['original_type'],
-                                    'to': step_3['new_type']
-                                })
-                                break
-
-                        if self.should_print_pattern('flips'):
-                            direction = 'UP' if step_3['direction'] == 'up' else 'DOWN'
-                            print(f"{symbol}: Bougie {candle_nb} ({step_3['date']}): STEP 3 - Confirmation CLOSE {direction} à {step_3['level']:.2f}")
+                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                            label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): BREAKOUT {direction} {label} à {breakout['level']:.2f}")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
-                    # Convertir step_1_list en breakout_history pour compatibilité
-                    breakout_history = []
-                    for s1 in step_1_list:
-                        breakout_history.append({
-                            'level': s1['level'],
-                            'original_type': s1['original_type'],
-                            'breakout_candle': 0,
-                            'breakout_date': today,
-                            'flip_detected': s1.get('step_3_detected', False)
-                        })
-                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, None, None)
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today)
 
             # Génère le graphique si ce symbole correspond à celui demandé
             if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
@@ -930,119 +596,41 @@ class StockScanner:
             print(f"Erreur récupération {symbol}: {e}")
             return None
 
-    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None) -> Optional[Dict]:
-        """Vérifie si un breakout est en cours avec les données temps réel avec confirmation
+    def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
+        """Vérifie si un breakout est en cours avec les données temps réel
 
-        Breakout = bougie N-1 CLOSE casse + bougie N CLOSE confirme
-
-        Args:
-            last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
-            last_breakout_level: Niveau du dernier breakout (pour détecter les retracements)
+        Breakout = prev_close d'un côté du niveau + current_high/low de l'autre côté
         """
         prev_close = bars_data.get('prev_close')
+        current_high = bars_data['current_high']
+        current_low = bars_data['current_low']
         current_close = bars_data['current_close']
 
         # Si les données de la bougie précédente ne sont pas complètes, on ne peut pas confirmer
         if prev_close is None:
             return None
 
-        # Reset de la direction si retracement significatif (3%)
-        RETRACEMENT_THRESHOLD = 0.03
-        if last_breakout_direction and last_breakout_level:
-            if last_breakout_direction == 'up' and current_close < last_breakout_level * (1 - RETRACEMENT_THRESHOLD):
-                # Prix a retracé de plus de 3% sous le dernier niveau de breakout up
-                last_breakout_direction = None
-                last_breakout_level = None
-            elif last_breakout_direction == 'down' and current_close > last_breakout_level * (1 + RETRACEMENT_THRESHOLD):
-                # Prix a remonté de plus de 3% au-dessus du dernier niveau de breakdown
-                last_breakout_direction = None
-                last_breakout_level = None
+        # Détection breakout résistance (vers le haut)
+        for resistance in resistance_levels:
+            if prev_close < resistance and current_high > resistance:
+                return {
+                    'type': 'resistance_breakout',
+                    'level': resistance,
+                    'close': current_close,
+                    'direction': 'up',
+                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                }
 
-        # Détection breakout résistance (vers le haut) avec confirmation
-        # Bougie N-1: CLOSE > résistance (vraie cassure)
-        # Bougie N: CLOSE > résistance (confirme)
-        if last_breakout_direction != 'up':
-            for resistance in resistance_levels:
-                if prev_close > resistance and current_close > resistance:
-                    return {
-                        'type': 'resistance_breakout',
-                        'level': resistance,
-                        'close': current_close,
-                        'direction': 'up',
-                        'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
-                    }
-
-        # Détection breakdown support (vers le bas) avec confirmation
-        # Bougie N-1: CLOSE < support (vraie cassure)
-        # Bougie N: CLOSE < support (confirme)
-        if last_breakout_direction != 'down':
-            for support in support_levels:
-                if prev_close < support and current_close < support:
-                    return {
-                        'type': 'support_breakdown',
-                        'level': support,
-                        'close': current_close,
-                        'direction': 'down',
-                        'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
-                    }
-
-        return None
-
-    def check_realtime_flip(self, bars_data: Dict, breakout_history: List[Dict]) -> Optional[Dict]:
-        """Vérifie si un flip est en cours avec les données temps réel"""
-        if not breakout_history:
-            return None
-
-        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
-
-        prev_close = bars_data['prev_close']
-        current_high = bars_data['current_high']
-        current_low = bars_data['current_low']
-        current_close = bars_data['current_close']
-
-        # Parcourt l'historique des breakouts pour détecter les flips
-        for i, breakout in enumerate(breakout_history):
-            # Ignore si un flip a déjà été détecté pour ce breakout
-            if breakout.get('flip_detected', False):
-                continue
-
-            level = breakout['level']
-            original_type = breakout['original_type']
-
-            # Vérifie si on est proche du niveau (dans la tolérance)
-            tolerance_range = level * flip_tolerance
-
-            # Cas 1: Ancien resistance → nouveau support
-            # Après un breakout de résistance, le prix revient tester le niveau
-            if original_type == 'resistance':
-                # Le LOW de la bougie touche le niveau (retest par le haut)
-                if (current_low <= level + tolerance_range and
-                    current_low >= level - tolerance_range):
-                    # Marque le flip comme détecté
-                    breakout_history[i]['flip_detected'] = True
-                    return {
-                        'type': 'flip_resistance_to_support',
-                        'level': level,
-                        'original_type': 'resistance',
-                        'new_type': 'support',
-                        'close': current_close
-                    }
-
-            # Cas 2: Ancien support → nouveau resistance
-            # Après un breakdown de support, le prix revient tester le niveau
-            elif original_type == 'support':
-                # Le HIGH de la bougie touche le niveau (retest par le bas)
-                if (current_high >= level - tolerance_range and
-                    current_high <= level + tolerance_range):
-                    # Marque le flip comme détecté
-                    breakout_history[i]['flip_detected'] = True
-                    return {
-                        'type': 'flip_support_to_resistance',
-                        'level': level,
-                        'original_type': 'support',
-                        'new_type': 'resistance',
-                        'close': current_close
-                    }
+        # Détection breakdown support (vers le bas)
+        for support in support_levels:
+            if prev_close > support and current_low < support:
+                return {
+                    'type': 'support_breakdown',
+                    'level': support,
+                    'close': current_close,
+                    'direction': 'down',
+                    'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
+                }
 
         return None
 
@@ -1064,9 +652,6 @@ class StockScanner:
         for item in watchlist:
             symbol = item['symbol']
             support_levels, resistance_levels = self.load_sr_levels(symbol, today)
-            breakout_history = self.load_breakout_history(symbol, today)
-            last_breakout_direction = self.load_last_breakout_direction(symbol, today)
-            last_breakout_level = self.load_last_breakout_level(symbol, today)
 
             if not support_levels and not resistance_levels:
                 print(f"{symbol}: Pas de S/R pour {today} - lancer --backtest d'abord")
@@ -1074,12 +659,9 @@ class StockScanner:
             else:
                 sr_data[symbol] = {
                     'support_levels': support_levels,
-                    'resistance_levels': resistance_levels,
-                    'breakout_history': breakout_history,
-                    'last_breakout_direction': last_breakout_direction,
-                    'last_breakout_level': last_breakout_level
+                    'resistance_levels': resistance_levels
                 }
-                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances, {len(breakout_history)} breakouts chargés")
+                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances")
 
         print()
 
@@ -1108,9 +690,6 @@ class StockScanner:
 
                     support_levels = sr_data[symbol]['support_levels']
                     resistance_levels = sr_data[symbol]['resistance_levels']
-                    breakout_history = sr_data[symbol]['breakout_history']
-                    last_breakout_direction = sr_data[symbol]['last_breakout_direction']
-                    last_breakout_level = sr_data[symbol]['last_breakout_level']
 
                     # Récupère les données IBKR
                     bars_data = self.get_last_bars_ibkr(ib, symbol)
@@ -1118,44 +697,14 @@ class StockScanner:
                     if not bars_data:
                         continue
 
-                    # Vérifie flip si activé
-                    if self.is_pattern_enabled('flips'):
-                        flip = self.check_realtime_flip(bars_data, breakout_history)
-                        if flip and self.should_print_pattern('flips'):
-                            # Indiquer la direction attendue après le flip
-                            if flip['type'] == 'flip_resistance_to_support':
-                                direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
-                            else:
-                                direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
-                            print(f"FLIP: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
-
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
-                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels, last_breakout_direction, last_breakout_level)
-                        if breakout:
-                            if self.should_print_pattern('breakouts'):
-                                # Indiquer la direction du breakout
-                                direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                                breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                                print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
-
-                            # Met à jour la direction, le niveau et sauvegarde
-                            last_breakout_direction = breakout['direction']
-                            last_breakout_level = breakout['level']
-                            sr_data[symbol]['last_breakout_direction'] = last_breakout_direction
-                            sr_data[symbol]['last_breakout_level'] = last_breakout_level
-
-                            # Ajoute le breakout à l'historique
-                            breakout_history.append({
-                                'level': breakout['level'],
-                                'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
-                                'breakout_candle': 0,
-                                'breakout_date': today,
-                                'flip_detected': False  # Track si un flip a déjà été détecté pour ce breakout
-                            })
-
-                            # Sauvegarde le nouveau statut
-                            self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction, last_breakout_level)
+                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
+                        if breakout and self.should_print_pattern('breakouts'):
+                            # Indiquer la direction du breakout
+                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                            breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
 
                 time.sleep(update_interval)
 

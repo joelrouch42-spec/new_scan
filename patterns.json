@@ -5,12 +5,6 @@
       "enabled": true,
       "print_alerts": true,
       "description": "Détection des cassures de support/résistance"
-    },
-    {
-      "name": "flips",
-      "enabled": true,
-      "print_alerts": true,
-      "description": "Détection des role reversals (ancien support devient résistance et vice versa)"
     }
   ],
   "support_resistance": {
