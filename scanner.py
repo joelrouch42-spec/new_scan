@@ -684,7 +684,7 @@ class StockScanner:
                         detected_patterns.append({
                             'type': 'flip_up' if flip['type'] == 'flip_resistance_to_support' else 'flip_down',
                             'date': date_str,
-                            'price': flip['close'],
+                            'price': flip['level'],  # Positionne le marqueur exactement au niveau S/R
                             'level': flip['level'],
                             'from': flip['original_type'],
                             'to': flip['new_type']
@@ -707,7 +707,7 @@ class StockScanner:
                         detected_patterns.append({
                             'type': 'breakout_up' if breakout['direction'] == 'up' else 'breakout_down',
                             'date': date_str,
-                            'price': breakout['close'],
+                            'price': breakout['level'],  # Positionne le marqueur exactement au niveau S/R cassé
                             'level': breakout['level']
                         })
 
