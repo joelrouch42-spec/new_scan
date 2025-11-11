@@ -119,7 +119,7 @@ class StockScanner:
     def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None, symbol: str = None) -> Optional[Dict]:
         """Détecte les breakouts de support/résistance avec confirmation
 
-        Breakout confirmé = bougie précédente touche le niveau + bougie actuelle clôture au-delà
+        Breakout = bougie N-1 CLOSE casse + bougie N CLOSE confirme
 
         Args:
             last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
@@ -129,9 +129,9 @@ class StockScanner:
             return None
 
         last_idx = len(df) - 1
-        prev_high = float(df['High'].iloc[last_idx - 1])
-        prev_low = float(df['Low'].iloc[last_idx - 1])
+        prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
+        prev_date = df['Date'].iloc[last_idx - 1] if 'Date' in df.columns else None
 
         # Reset de la direction si retracement significatif (3%)
         RETRACEMENT_THRESHOLD = 0.03
@@ -146,30 +146,32 @@ class StockScanner:
                 last_breakout_level = None
 
         # Détection breakout résistance (vers le haut) avec confirmation
-        # Bougie précédente: HIGH > résistance (touche)
-        # Bougie actuelle: CLOSE > résistance (confirme)
+        # Bougie N-1: CLOSE > résistance (vraie cassure)
+        # Bougie N: CLOSE > résistance (confirme)
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_high > resistance and current_close > resistance:
+                if prev_close > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
                         'close': current_close,
                         'direction': 'up',
+                        'breakout_date': prev_date,  # Date de la bougie qui a cassé (numéro 1)
                         'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
                     }
 
         # Détection breakdown support (vers le bas) avec confirmation
-        # Bougie précédente: LOW < support (touche)
-        # Bougie actuelle: CLOSE < support (confirme)
+        # Bougie N-1: CLOSE < support (vraie cassure)
+        # Bougie N: CLOSE < support (confirme)
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_low < support and current_close < support:
+                if prev_close < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
                         'close': current_close,
                         'direction': 'down',
+                        'breakout_date': prev_date,  # Date de la bougie qui a cassé (numéro 1)
                         'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
                     }
 
@@ -469,72 +471,106 @@ class StockScanner:
                 annotation_position="right"
             )
 
-        # Marqueurs pour breakouts et flips
-        breakout_dates = []
-        breakout_prices = []
-        breakout_texts = []
-        breakout_colors = []
+        # Marqueurs numérotés pour visualiser les étapes
+        step_1_dates = []
+        step_1_prices = []
+        step_1_texts = []
 
-        flip_dates = []
-        flip_prices = []
-        flip_texts = []
-        flip_colors = []
+        step_2_dates = []
+        step_2_prices = []
+        step_2_texts = []
+
+        step_3_dates = []
+        step_3_prices = []
+        step_3_texts = []
 
         for pattern in detected_patterns:
             pattern_date = pattern['date']
             pattern_type = pattern['type']
+            pattern_level = pattern['level']
 
-            if pattern_type in ['breakout_up', 'breakout_down']:
-                breakout_dates.append(pattern_date)
-                breakout_prices.append(pattern['price'])
-                direction = 'UP' if pattern_type == 'breakout_up' else 'DOWN'
-                label = 'résistance' if pattern_type == 'breakout_up' else 'support'
-                breakout_texts.append(f"BREAKOUT {direction}<br>{label} @ ${pattern['level']:.2f}")
-                breakout_colors.append('green' if pattern_type == 'breakout_up' else 'red')
+            if pattern_type == 'step_1':
+                step_1_dates.append(pattern_date)
+                step_1_prices.append(pattern['price'])
+                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
+                step_1_texts.append(f"1: Cassure {direction}<br>@ ${pattern_level:.2f}")
 
-            elif pattern_type in ['flip_up', 'flip_down']:
-                flip_dates.append(pattern_date)
-                flip_prices.append(pattern['price'])
-                direction = 'UP' if pattern_type == 'flip_up' else 'DOWN'
-                flip_texts.append(f"FLIP {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern['level']:.2f}")
-                flip_colors.append('blue' if pattern_type == 'flip_up' else 'orange')
+            elif pattern_type == 'step_2':
+                step_2_dates.append(pattern_date)
+                step_2_prices.append(pattern['price'])
+                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
+                step_2_texts.append(f"2: Confirmation {direction}<br>@ ${pattern_level:.2f}")
 
-        # Ajouter les marqueurs de breakouts
-        if breakout_dates:
-            for i, (date, price, text, color) in enumerate(zip(breakout_dates, breakout_prices, breakout_texts, breakout_colors)):
+            elif pattern_type == 'step_3':
+                step_3_dates.append(pattern_date)
+                step_3_prices.append(pattern['price'])
+                direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
+                step_3_texts.append(f"3: Flip {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern_level:.2f}")
+
+        # Ajouter les marqueurs numéro 1 (cassure)
+        if step_1_dates:
+            for date, price, text in zip(step_1_dates, step_1_prices, step_1_texts):
                 fig.add_trace(
                     go.Scatter(
                         x=[date],
                         y=[price],
-                        mode='markers',
+                        mode='markers+text',
                         marker=dict(
-                            symbol='triangle-up' if color == 'green' else 'triangle-down',
-                            size=15,
-                            color=color
+                            symbol='circle',
+                            size=20,
+                            color='yellow',
+                            line=dict(width=2, color='black')
                         ),
-                        showlegend=i == 0,
-                        name='Breakouts',
+                        text='1',
+                        textfont=dict(size=14, color='black', family='Arial Black'),
+                        textposition='middle center',
+                        showlegend=False,
                         hovertext=text,
                         hoverinfo='text'
                     )
                 )
 
-        # Ajouter les marqueurs de flips
-        if flip_dates:
-            for i, (date, price, text, color) in enumerate(zip(flip_dates, flip_prices, flip_texts, flip_colors)):
+        # Ajouter les marqueurs numéro 2 (confirmation)
+        if step_2_dates:
+            for date, price, text in zip(step_2_dates, step_2_prices, step_2_texts):
                 fig.add_trace(
                     go.Scatter(
                         x=[date],
                         y=[price],
-                        mode='markers',
+                        mode='markers+text',
                         marker=dict(
-                            symbol='diamond',
-                            size=12,
-                            color=color,
-                            line=dict(width=2, color='white')
+                            symbol='circle',
+                            size=20,
+                            color='orange',
+                            line=dict(width=2, color='black')
                         ),
-                        showlegend=i == 0,
-                        name='Flips',
+                        text='2',
+                        textfont=dict(size=14, color='black', family='Arial Black'),
+                        textposition='middle center',
+                        showlegend=False,
+                        hovertext=text,
+                        hoverinfo='text'
+                    )
+                )
+
+        # Ajouter les marqueurs numéro 3 (flip/retest)
+        if step_3_dates:
+            for date, price, text in zip(step_3_dates, step_3_prices, step_3_texts):
+                fig.add_trace(
+                    go.Scatter(
+                        x=[date],
+                        y=[price],
+                        mode='markers+text',
+                        marker=dict(
+                            symbol='circle',
+                            size=20,
+                            color='cyan',
+                            line=dict(width=2, color='black')
+                        ),
+                        text='3',
+                        textfont=dict(size=14, color='black', family='Arial Black'),
+                        textposition='middle center',
+                        showlegend=False,
                         hovertext=text,
                         hoverinfo='text'
                     )
@@ -684,11 +720,13 @@ class StockScanner:
                             direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
 
                         # Ajouter à la liste des patterns détectés pour le graphique
+                        # Numéro 3: flip (retest)
                         detected_patterns.append({
-                            'type': 'flip_up' if flip['type'] == 'flip_resistance_to_support' else 'flip_down',
+                            'type': 'step_3',
                             'date': date_str,
-                            'price': flip['level'],  # Positionne le marqueur exactement au niveau S/R
+                            'price': flip['level'],
                             'level': flip['level'],
+                            'direction': 'up' if flip['type'] == 'flip_resistance_to_support' else 'down',
                             'from': flip['original_type'],
                             'to': flip['new_type']
                         })
@@ -707,11 +745,21 @@ class StockScanner:
                         breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
 
                         # Ajouter à la liste des patterns détectés pour le graphique
+                        # Numéro 1: bougie qui casse (N-1)
                         detected_patterns.append({
-                            'type': 'breakout_up' if breakout['direction'] == 'up' else 'breakout_down',
+                            'type': 'step_1',
+                            'date': breakout['breakout_date'],
+                            'price': breakout['level'],
+                            'level': breakout['level'],
+                            'direction': breakout['direction']
+                        })
+                        # Numéro 2: bougie qui confirme (N)
+                        detected_patterns.append({
+                            'type': 'step_2',
                             'date': date_str,
-                            'price': breakout['level'],  # Positionne le marqueur exactement au niveau S/R cassé
-                            'level': breakout['level']
+                            'price': breakout['level'],
+                            'level': breakout['level'],
+                            'direction': breakout['direction']
                         })
 
                         if self.should_print_pattern('breakouts'):
@@ -810,18 +858,17 @@ class StockScanner:
     def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None) -> Optional[Dict]:
         """Vérifie si un breakout est en cours avec les données temps réel avec confirmation
 
-        Breakout confirmé = bougie précédente touche le niveau + bougie actuelle clôture au-delà
+        Breakout = bougie N-1 CLOSE casse + bougie N CLOSE confirme
 
         Args:
             last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
             last_breakout_level: Niveau du dernier breakout (pour détecter les retracements)
         """
-        prev_high = bars_data.get('prev_high')
-        prev_low = bars_data.get('prev_low')
+        prev_close = bars_data.get('prev_close')
         current_close = bars_data['current_close']
 
         # Si les données de la bougie précédente ne sont pas complètes, on ne peut pas confirmer
-        if prev_high is None or prev_low is None:
+        if prev_close is None:
             return None
 
         # Reset de la direction si retracement significatif (3%)
@@ -837,11 +884,11 @@ class StockScanner:
                 last_breakout_level = None
 
         # Détection breakout résistance (vers le haut) avec confirmation
-        # Bougie précédente: HIGH > résistance (touche)
-        # Bougie actuelle: CLOSE > résistance (confirme)
+        # Bougie N-1: CLOSE > résistance (vraie cassure)
+        # Bougie N: CLOSE > résistance (confirme)
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_high > resistance and current_close > resistance:
+                if prev_close > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
@@ -851,11 +898,11 @@ class StockScanner:
                     }
 
         # Détection breakdown support (vers le bas) avec confirmation
-        # Bougie précédente: LOW < support (touche)
-        # Bougie actuelle: CLOSE < support (confirme)
+        # Bougie N-1: CLOSE < support (vraie cassure)
+        # Bougie N: CLOSE < support (confirme)
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_low < support and current_close < support:
+                if prev_close < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
