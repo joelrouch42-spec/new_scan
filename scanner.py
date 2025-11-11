@@ -145,9 +145,10 @@ class StockScanner:
                 last_breakout_level = None
 
         # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
+        # Le HIGH doit toucher la résistance ET le CLOSE doit confirmer au-dessus
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_close < resistance and current_high > resistance:
+                if prev_close < resistance and current_high > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
@@ -157,9 +158,10 @@ class StockScanner:
                     }
 
         # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
+        # Le LOW doit toucher le support ET le CLOSE doit confirmer en dessous
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_close > support and current_low < support:
+                if prev_close > support and current_low < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
@@ -818,9 +820,10 @@ class StockScanner:
                 last_breakout_level = None
 
         # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
+        # Le HIGH doit toucher la résistance ET le CLOSE doit confirmer au-dessus
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_close < resistance and current_high > resistance:
+                if prev_close < resistance and current_high > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
@@ -830,9 +833,10 @@ class StockScanner:
                     }
 
         # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
+        # Le LOW doit toucher le support ET le CLOSE doit confirmer en dessous
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_close > support and current_low < support:
+                if prev_close > support and current_low < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
