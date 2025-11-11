@@ -176,6 +176,7 @@ class StockScanner:
                 if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
                     (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
                     step_1_list[i]['step_2_detected'] = True
+                    step_1_list[i]['step_2_date'] = current_date  # Sauvegarde la date ici
                     return {
                         'type': 'step_2',
                         'level': level,
@@ -190,6 +191,7 @@ class StockScanner:
                 if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
                     (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
                     step_1_list[i]['step_2_detected'] = True
+                    step_1_list[i]['step_2_date'] = current_date  # Sauvegarde la date ici
                     return {
                         'type': 'step_2',
                         'level': level,
@@ -222,6 +224,7 @@ class StockScanner:
             if original_type == 'resistance' and step_1['direction'] == 'up':
                 if current_close > level:
                     step_1_list[i]['step_3_detected'] = True
+                    step_1_list[i]['step_3_date'] = current_date  # Sauvegarde la date ici
                     return {
                         'type': 'step_3',
                         'level': level,
@@ -236,6 +239,7 @@ class StockScanner:
             elif original_type == 'support' and step_1['direction'] == 'down':
                 if current_close < level:
                     step_1_list[i]['step_3_detected'] = True
+                    step_1_list[i]['step_3_date'] = current_date  # Sauvegarde la date ici
                     return {
                         'type': 'step_3',
                         'level': level,
@@ -791,16 +795,10 @@ class StockScanner:
                             label = step_1['original_type']
                             print(f"{symbol}: Bougie {candle_nb} ({step_1['date']}): STEP 1 - Cassure {direction} {label} à {step_1['level']:.2f}")
 
-                # STEP 2: Détecte retournement (bougie ENTIÈRE de l'autre côté)
+                # STEP 2: Détecte retest (bougie touche le niveau)
                 if self.is_pattern_enabled('breakouts'):
                     step_2 = self.detect_step_2_pullback(df_until_pos, step_1_list)
                     if step_2:
-                        # Met à jour step_1_list pour garder la date du step 2
-                        for i, s1 in enumerate(step_1_list):
-                            if s1['level'] == step_2['level'] and s1['original_type'] == step_2['original_type'] and s1['step_2_detected']:
-                                step_1_list[i]['step_2_date'] = step_2['date']
-                                break
-
                         if self.should_print_pattern('breakouts'):
                             direction = 'UP' if step_2['direction'] == 'up' else 'DOWN'
                             print(f"{symbol}: Bougie {candle_nb} ({step_2['date']}): STEP 2 - Retest {direction} à {step_2['level']:.2f}")
@@ -809,11 +807,9 @@ class StockScanner:
                 if self.is_pattern_enabled('flips'):
                     step_3 = self.detect_step_3_confirmation(df_until_pos, step_1_list)
                     if step_3:
-                        # Trouve le step_1 correspondant et ajoute la séquence complète au graphique
-                        for i, s1 in enumerate(step_1_list):
-                            if s1['level'] == step_3['level'] and s1['original_type'] == step_3['original_type'] and s1['step_3_detected']:
-                                step_1_list[i]['step_3_date'] = step_3['date']
-
+                        # Trouve le step_1 correspondant et ajoute la séquence complète 1, 2, 3 au graphique
+                        for s1 in step_1_list:
+                            if s1['level'] == step_3['level'] and s1['original_type'] == step_3['original_type'] and s1.get('step_3_detected', False):
                                 # Ajoute la séquence complète 1, 2, 3 au graphique
                                 # Step 1
                                 detected_patterns.append({
@@ -834,10 +830,10 @@ class StockScanner:
                                 # Step 3
                                 detected_patterns.append({
                                     'type': 'step_3',
-                                    'date': step_3['date'],
-                                    'price': step_3['level'],
-                                    'level': step_3['level'],
-                                    'direction': step_3['direction'],
+                                    'date': s1['step_3_date'],
+                                    'price': s1['level'],
+                                    'level': s1['level'],
+                                    'direction': s1['direction'],
                                     'from': step_3['original_type'],
                                     'to': step_3['new_type']
                                 })
