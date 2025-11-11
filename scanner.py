@@ -11,10 +11,12 @@ import argparse
 import numpy as np
 from scipy.signal import argrelextrema
 from typing import List, Tuple, Optional, Dict
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json'):
+    def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -25,6 +27,7 @@ class StockScanner:
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
         self.patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+        self.chart_symbol = chart_symbol
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
@@ -403,6 +406,175 @@ class StockScanner:
         except Exception as e:
             return self.download_yahoo_data(symbol, candle_nb, interval)
 
+    def generate_chart(self, symbol: str, df: pd.DataFrame, support_levels: List[float],
+                       resistance_levels: List[float], detected_patterns: List[Dict], date: str):
+        """Génère un graphique HTML interactif pour un symbole
+
+        Args:
+            symbol: Symbole du titre
+            df: DataFrame avec les données OHLCV
+            support_levels: Liste des niveaux de support
+            resistance_levels: Liste des niveaux de résistance
+            detected_patterns: Liste des patterns détectés (breakouts et flips)
+            date: Date du scan
+        """
+        print(f"\nGénération du graphique pour {symbol}...")
+
+        # Créer un subplot avec 2 lignes (prix + volume)
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            subplot_titles=(f'{symbol} - {date}', 'Volume'),
+            row_heights=[0.7, 0.3]
+        )
+
+        # Candlestick chart
+        fig.add_trace(
+            go.Candlestick(
+                x=df['Date'],
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name='OHLC',
+                increasing_line_color='green',
+                decreasing_line_color='red'
+            ),
+            row=1, col=1
+        )
+
+        # Lignes de support (vertes)
+        for support in support_levels:
+            fig.add_hline(
+                y=support,
+                line_dash="dash",
+                line_color="green",
+                annotation_text=f"S: ${support:.2f}",
+                annotation_position="right",
+                row=1, col=1
+            )
+
+        # Lignes de résistance (rouges)
+        for resistance in resistance_levels:
+            fig.add_hline(
+                y=resistance,
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f"R: ${resistance:.2f}",
+                annotation_position="right",
+                row=1, col=1
+            )
+
+        # Marqueurs pour breakouts et flips
+        breakout_dates = []
+        breakout_prices = []
+        breakout_texts = []
+        breakout_colors = []
+
+        flip_dates = []
+        flip_prices = []
+        flip_texts = []
+        flip_colors = []
+
+        for pattern in detected_patterns:
+            pattern_date = pattern['date']
+            pattern_type = pattern['type']
+
+            if pattern_type in ['breakout_up', 'breakout_down']:
+                breakout_dates.append(pattern_date)
+                breakout_prices.append(pattern['price'])
+                direction = 'UP' if pattern_type == 'breakout_up' else 'DOWN'
+                label = 'résistance' if pattern_type == 'breakout_up' else 'support'
+                breakout_texts.append(f"BREAKOUT {direction}<br>{label} @ ${pattern['level']:.2f}")
+                breakout_colors.append('green' if pattern_type == 'breakout_up' else 'red')
+
+            elif pattern_type in ['flip_up', 'flip_down']:
+                flip_dates.append(pattern_date)
+                flip_prices.append(pattern['price'])
+                direction = 'UP' if pattern_type == 'flip_up' else 'DOWN'
+                flip_texts.append(f"FLIP {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern['level']:.2f}")
+                flip_colors.append('blue' if pattern_type == 'flip_up' else 'orange')
+
+        # Ajouter les marqueurs de breakouts
+        if breakout_dates:
+            for i, (date, price, text, color) in enumerate(zip(breakout_dates, breakout_prices, breakout_texts, breakout_colors)):
+                fig.add_trace(
+                    go.Scatter(
+                        x=[date],
+                        y=[price],
+                        mode='markers+text',
+                        marker=dict(
+                            symbol='triangle-up' if color == 'green' else 'triangle-down',
+                            size=15,
+                            color=color
+                        ),
+                        text=text,
+                        textposition='top center' if color == 'green' else 'bottom center',
+                        showlegend=i == 0,
+                        name='Breakouts',
+                        hovertext=text,
+                        hoverinfo='text'
+                    ),
+                    row=1, col=1
+                )
+
+        # Ajouter les marqueurs de flips
+        if flip_dates:
+            for i, (date, price, text, color) in enumerate(zip(flip_dates, flip_prices, flip_texts, flip_colors)):
+                fig.add_trace(
+                    go.Scatter(
+                        x=[date],
+                        y=[price],
+                        mode='markers',
+                        marker=dict(
+                            symbol='diamond',
+                            size=12,
+                            color=color,
+                            line=dict(width=2, color='white')
+                        ),
+                        showlegend=i == 0,
+                        name='Flips',
+                        hovertext=text,
+                        hoverinfo='text'
+                    ),
+                    row=1, col=1
+                )
+
+        # Volume
+        colors = ['red' if close < open else 'green'
+                  for close, open in zip(df['Close'], df['Open'])]
+        fig.add_trace(
+            go.Bar(
+                x=df['Date'],
+                y=df['Volume'],
+                name='Volume',
+                marker_color=colors,
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+
+        # Mise en forme
+        fig.update_layout(
+            title=f'{symbol} - Support/Resistance & Patterns - {date}',
+            xaxis_rangeslider_visible=False,
+            height=800,
+            hovermode='x unified',
+            template='plotly_dark'
+        )
+
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+        fig.update_yaxes(title_text="Prix ($)", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=2, col=1)
+
+        # Sauvegarder
+        output_file = os.path.join(self.patterns_folder, f"{date}_{symbol}_chart.html")
+        fig.write_html(output_file)
+        print(f"Graphique sauvegardé: {output_file}")
+
+        return output_file
+
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
         try:
@@ -499,6 +671,9 @@ class StockScanner:
             last_breakout_direction = None  # 'up', 'down', ou None
             last_breakout_level = None
 
+            # Liste pour stocker les patterns détectés (pour le graphique)
+            detected_patterns = []
+
             # Boucle de test: du passé vers le présent (de test_stop vers test_start)
             for candle_nb in range(test_stop, test_start - 1, -1):
                 # Position dans le df: on enlève les N dernières bougies
@@ -516,7 +691,7 @@ class StockScanner:
                 # Détecte les flips (role reversals) si activé
                 if self.is_pattern_enabled('flips'):
                     flip = self.detect_flips(df_until_pos, breakout_history, symbol)
-                    if flip and self.should_print_pattern('flips'):
+                    if flip:
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
                         # Indiquer la direction attendue après le flip
@@ -524,18 +699,39 @@ class StockScanner:
                             direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
                         else:
                             direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
-                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
+
+                        # Ajouter à la liste des patterns détectés pour le graphique
+                        detected_patterns.append({
+                            'type': 'flip_up' if flip['type'] == 'flip_resistance_to_support' else 'flip_down',
+                            'date': date_str,
+                            'price': flip['close'],
+                            'level': flip['level'],
+                            'from': flip['original_type'],
+                            'to': flip['new_type']
+                        })
+
+                        if self.should_print_pattern('flips'):
+                            print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
                 if self.is_pattern_enabled('breakouts'):
                     breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, last_breakout_direction, last_breakout_level, symbol)
                     if breakout:
+                        last_row = df_until_pos.iloc[-1]
+                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
+                        # Indiquer la direction du breakout
+                        direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                        breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+
+                        # Ajouter à la liste des patterns détectés pour le graphique
+                        detected_patterns.append({
+                            'type': 'breakout_up' if breakout['direction'] == 'up' else 'breakout_down',
+                            'date': date_str,
+                            'price': breakout['close'],
+                            'level': breakout['level']
+                        })
+
                         if self.should_print_pattern('breakouts'):
-                            last_row = df_until_pos.iloc[-1]
-                            date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                            # Indiquer la direction du breakout
-                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                            breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
 
                         # Met à jour la direction et le niveau du dernier breakout
@@ -553,6 +749,10 @@ class StockScanner:
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
                 if candle_nb == test_start:
                     self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction, last_breakout_level)
+
+            # Génère le graphique si ce symbole correspond à celui demandé
+            if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
+                self.generate_chart(symbol, df, support_levels, resistance_levels, detected_patterns, today)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
@@ -851,7 +1051,8 @@ class StockScanner:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scanner de stocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
+    parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique HTML pour le symbole spécifié (ex: --chart AAPL)')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
     scanner.run()
