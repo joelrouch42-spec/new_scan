@@ -564,19 +564,19 @@ class StockScanner:
                 step_1_dates.append(pattern_date)
                 step_1_prices.append(pattern['price'])
                 direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_1_texts.append(f"1: Cassure {direction}<br>@ ${pattern_level:.2f}")
+                step_1_texts.append(f"1: Bougie entière au-delà<br>{direction} @ ${pattern_level:.2f}")
 
             elif pattern_type == 'step_2':
                 step_2_dates.append(pattern_date)
                 step_2_prices.append(pattern['price'])
                 direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_2_texts.append(f"2: Confirmation {direction}<br>@ ${pattern_level:.2f}")
+                step_2_texts.append(f"2: Retournement<br>Bougie entière de l'autre côté<br>{direction} @ ${pattern_level:.2f}")
 
             elif pattern_type == 'step_3':
                 step_3_dates.append(pattern_date)
                 step_3_prices.append(pattern['price'])
                 direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_3_texts.append(f"3: Flip {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern_level:.2f}")
+                step_3_texts.append(f"3: Retest {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern_level:.2f}")
 
         # Ajouter les marqueurs numéro 1 (cassure)
         if step_1_dates:
@@ -782,17 +782,10 @@ class StockScanner:
                     if step_1:
                         # Ajoute à la liste de tracking
                         step_1['step_2_detected'] = False
+                        step_1['step_2_date'] = None
                         step_1['step_3_detected'] = False
+                        step_1['step_3_date'] = None
                         step_1_list.append(step_1)
-
-                        # Ajoute au graphique
-                        detected_patterns.append({
-                            'type': 'step_1',
-                            'date': step_1['date'],
-                            'price': step_1['level'],
-                            'level': step_1['level'],
-                            'direction': step_1['direction']
-                        })
 
                         if self.should_print_pattern('breakouts'):
                             direction = 'UP' if step_1['direction'] == 'up' else 'DOWN'
@@ -803,14 +796,11 @@ class StockScanner:
                 if self.is_pattern_enabled('breakouts'):
                     step_2 = self.detect_step_2_pullback(df_until_pos, step_1_list)
                     if step_2:
-                        # Ajoute au graphique
-                        detected_patterns.append({
-                            'type': 'step_2',
-                            'date': step_2['date'],
-                            'price': step_2['level'],
-                            'level': step_2['level'],
-                            'direction': step_2['direction']
-                        })
+                        # Met à jour step_1_list pour garder la date du step 2
+                        for i, s1 in enumerate(step_1_list):
+                            if s1['level'] == step_2['level'] and s1['original_type'] == step_2['original_type'] and s1['step_2_detected']:
+                                step_1_list[i]['step_2_date'] = step_2['date']
+                                break
 
                         if self.should_print_pattern('breakouts'):
                             direction = 'UP' if step_2['direction'] == 'up' else 'DOWN'
@@ -820,16 +810,39 @@ class StockScanner:
                 if self.is_pattern_enabled('flips'):
                     step_3 = self.detect_step_3_retest(df_until_pos, step_1_list)
                     if step_3:
-                        # Ajoute au graphique
-                        detected_patterns.append({
-                            'type': 'step_3',
-                            'date': step_3['date'],
-                            'price': step_3['level'],
-                            'level': step_3['level'],
-                            'direction': step_3['direction'],
-                            'from': step_3['original_type'],
-                            'to': step_3['new_type']
-                        })
+                        # Trouve le step_1 correspondant et ajoute la séquence complète au graphique
+                        for i, s1 in enumerate(step_1_list):
+                            if s1['level'] == step_3['level'] and s1['original_type'] == step_3['original_type'] and s1['step_3_detected']:
+                                step_1_list[i]['step_3_date'] = step_3['date']
+
+                                # Ajoute la séquence complète 1, 2, 3 au graphique
+                                # Step 1
+                                detected_patterns.append({
+                                    'type': 'step_1',
+                                    'date': s1['date'],
+                                    'price': s1['level'],
+                                    'level': s1['level'],
+                                    'direction': s1['direction']
+                                })
+                                # Step 2
+                                detected_patterns.append({
+                                    'type': 'step_2',
+                                    'date': s1['step_2_date'],
+                                    'price': s1['level'],
+                                    'level': s1['level'],
+                                    'direction': s1['direction']
+                                })
+                                # Step 3
+                                detected_patterns.append({
+                                    'type': 'step_3',
+                                    'date': step_3['date'],
+                                    'price': step_3['level'],
+                                    'level': step_3['level'],
+                                    'direction': step_3['direction'],
+                                    'from': step_3['original_type'],
+                                    'to': step_3['new_type']
+                                })
+                                break
 
                         if self.should_print_pattern('flips'):
                             direction = 'UP' if step_3['direction'] == 'up' else 'DOWN'
