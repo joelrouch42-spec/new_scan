@@ -752,7 +752,9 @@ class StockScanner:
 
             # Génère le graphique si ce symbole correspond à celui demandé
             if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
-                self.generate_chart(symbol, df, support_levels, resistance_levels, detected_patterns, today)
+                # Recalcule les S/R sur le DataFrame complet pour l'affichage
+                final_support_levels, final_resistance_levels = self.find_support_resistance(df)
+                self.generate_chart(symbol, df, final_support_levels, final_resistance_levels, detected_patterns, today)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
