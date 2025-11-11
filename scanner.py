@@ -186,7 +186,11 @@ class StockScanner:
         current_close = float(df['Close'].iloc[last_idx])
 
         # Parcourt l'historique des breakouts pour détecter les flips
-        for breakout in breakout_history:
+        for i, breakout in enumerate(breakout_history):
+            # Ignore si un flip a déjà été détecté pour ce breakout
+            if breakout.get('flip_detected', False):
+                continue
+
             level = breakout['level']
             original_type = breakout['original_type']
 
@@ -199,6 +203,8 @@ class StockScanner:
                 # Le LOW de la bougie touche le niveau (retest par le haut)
                 if (current_low <= level + tolerance_range and
                     current_low >= level - tolerance_range):
+                    # Marque le flip comme détecté
+                    breakout_history[i]['flip_detected'] = True
                     return {
                         'type': 'flip_resistance_to_support',
                         'level': level,
@@ -213,6 +219,8 @@ class StockScanner:
                 # Le HIGH de la bougie touche le niveau (retest par le bas)
                 if (current_high >= level - tolerance_range and
                     current_high <= level + tolerance_range):
+                    # Marque le flip comme détecté
+                    breakout_history[i]['flip_detected'] = True
                     return {
                         'type': 'flip_support_to_resistance',
                         'level': level,
@@ -717,7 +725,8 @@ class StockScanner:
                             'level': breakout['level'],
                             'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
                             'breakout_candle': candle_nb,
-                            'breakout_date': today
+                            'breakout_date': today,
+                            'flip_detected': False  # Track si un flip a déjà été détecté pour ce breakout
                         })
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
@@ -860,7 +869,11 @@ class StockScanner:
         current_close = bars_data['current_close']
 
         # Parcourt l'historique des breakouts pour détecter les flips
-        for breakout in breakout_history:
+        for i, breakout in enumerate(breakout_history):
+            # Ignore si un flip a déjà été détecté pour ce breakout
+            if breakout.get('flip_detected', False):
+                continue
+
             level = breakout['level']
             original_type = breakout['original_type']
 
@@ -873,6 +886,8 @@ class StockScanner:
                 # Le LOW de la bougie touche le niveau (retest par le haut)
                 if (current_low <= level + tolerance_range and
                     current_low >= level - tolerance_range):
+                    # Marque le flip comme détecté
+                    breakout_history[i]['flip_detected'] = True
                     return {
                         'type': 'flip_resistance_to_support',
                         'level': level,
@@ -887,6 +902,8 @@ class StockScanner:
                 # Le HIGH de la bougie touche le niveau (retest par le bas)
                 if (current_high >= level - tolerance_range and
                     current_high <= level + tolerance_range):
+                    # Marque le flip comme détecté
+                    breakout_history[i]['flip_detected'] = True
                     return {
                         'type': 'flip_support_to_resistance',
                         'level': level,
@@ -1001,7 +1018,8 @@ class StockScanner:
                                 'level': breakout['level'],
                                 'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
                                 'breakout_candle': 0,
-                                'breakout_date': today
+                                'breakout_date': today,
+                                'flip_detected': False  # Track si un flip a déjà été détecté pour ce breakout
                             })
 
                             # Sauvegarde le nouveau statut
