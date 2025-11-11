@@ -117,19 +117,20 @@ class StockScanner:
         return support_clusters, resistance_clusters
 
     def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None, symbol: str = None) -> Optional[Dict]:
-        """Détecte les breakouts de support/résistance
+        """Détecte les breakouts de support/résistance avec confirmation
+
+        Breakout confirmé = bougie précédente touche le niveau + bougie actuelle clôture au-delà
 
         Args:
             last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
-            last_breakout_level: Niveau du dernier breakout (pour détecter les retraceme nts)
+            last_breakout_level: Niveau du dernier breakout (pour détecter les retracements)
         """
         if len(df) < 2:
             return None
 
         last_idx = len(df) - 1
-        current_high = float(df['High'].iloc[last_idx])
-        current_low = float(df['Low'].iloc[last_idx])
-        prev_close = float(df['Close'].iloc[last_idx - 1])
+        prev_high = float(df['High'].iloc[last_idx - 1])
+        prev_low = float(df['Low'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
 
         # Reset de la direction si retracement significatif (3%)
@@ -144,11 +145,12 @@ class StockScanner:
                 last_breakout_direction = None
                 last_breakout_level = None
 
-        # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
-        # Le HIGH doit toucher la résistance ET le CLOSE doit confirmer au-dessus
+        # Détection breakout résistance (vers le haut) avec confirmation
+        # Bougie précédente: HIGH > résistance (touche)
+        # Bougie actuelle: CLOSE > résistance (confirme)
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_close < resistance and current_high > resistance and current_close > resistance:
+                if prev_high > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
@@ -157,11 +159,12 @@ class StockScanner:
                         'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
                     }
 
-        # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
-        # Le LOW doit toucher le support ET le CLOSE doit confirmer en dessous
+        # Détection breakdown support (vers le bas) avec confirmation
+        # Bougie précédente: LOW < support (touche)
+        # Bougie actuelle: CLOSE < support (confirme)
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_close > support and current_low < support and current_close < support:
+                if prev_low < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
@@ -791,6 +794,8 @@ class StockScanner:
                 date_est = current_date
 
             return {
+                'prev_high': bars[-2].high,
+                'prev_low': bars[-2].low,
                 'prev_close': bars[-2].close,
                 'current_high': bars[-1].high,
                 'current_low': bars[-1].low,
@@ -803,16 +808,21 @@ class StockScanner:
             return None
 
     def check_realtime_breakout(self, bars_data: Dict, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None) -> Optional[Dict]:
-        """Vérifie si un breakout est en cours avec les données temps réel
+        """Vérifie si un breakout est en cours avec les données temps réel avec confirmation
+
+        Breakout confirmé = bougie précédente touche le niveau + bougie actuelle clôture au-delà
 
         Args:
             last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
             last_breakout_level: Niveau du dernier breakout (pour détecter les retracements)
         """
-        prev_close = bars_data['prev_close']
-        current_high = bars_data['current_high']
-        current_low = bars_data['current_low']
+        prev_high = bars_data.get('prev_high')
+        prev_low = bars_data.get('prev_low')
         current_close = bars_data['current_close']
+
+        # Si les données de la bougie précédente ne sont pas complètes, on ne peut pas confirmer
+        if prev_high is None or prev_low is None:
+            return None
 
         # Reset de la direction si retracement significatif (3%)
         RETRACEMENT_THRESHOLD = 0.03
@@ -826,11 +836,12 @@ class StockScanner:
                 last_breakout_direction = None
                 last_breakout_level = None
 
-        # Détection breakout résistance (vers le haut) - seulement si dernier mouvement n'était pas vers le haut
-        # Le HIGH doit toucher la résistance ET le CLOSE doit confirmer au-dessus
+        # Détection breakout résistance (vers le haut) avec confirmation
+        # Bougie précédente: HIGH > résistance (touche)
+        # Bougie actuelle: CLOSE > résistance (confirme)
         if last_breakout_direction != 'up':
             for resistance in resistance_levels:
-                if prev_close < resistance and current_high > resistance and current_close > resistance:
+                if prev_high > resistance and current_close > resistance:
                     return {
                         'type': 'resistance_breakout',
                         'level': resistance,
@@ -839,11 +850,12 @@ class StockScanner:
                         'timestamp': datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')
                     }
 
-        # Détection breakdown support (vers le bas) - seulement si dernier mouvement n'était pas vers le bas
-        # Le LOW doit toucher le support ET le CLOSE doit confirmer en dessous
+        # Détection breakdown support (vers le bas) avec confirmation
+        # Bougie précédente: LOW < support (touche)
+        # Bougie actuelle: CLOSE < support (confirme)
         if last_breakout_direction != 'down':
             for support in support_levels:
-                if prev_close > support and current_low < support and current_close < support:
+                if prev_low < support and current_close < support:
                     return {
                         'type': 'support_breakdown',
                         'level': support,
