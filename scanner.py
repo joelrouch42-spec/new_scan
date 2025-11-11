@@ -47,6 +47,13 @@ class StockScanner:
                 return pattern.get('enabled', False)
         return False
 
+    def should_print_pattern(self, pattern_name: str) -> bool:
+        """Vérifie si les alertes d'un pattern doivent être affichées"""
+        for pattern in self.patterns_config.get('patterns', []):
+            if pattern['name'] == pattern_name:
+                return pattern.get('print_alerts', True)  # Par défaut True pour compatibilité
+        return True
+
     def get_data_filename(self, symbol, candle_nb, interval, date):
         """Génère le nom du fichier de données"""
         return os.path.join(
@@ -509,7 +516,7 @@ class StockScanner:
                 # Détecte les flips (role reversals) si activé
                 if self.is_pattern_enabled('flips'):
                     flip = self.detect_flips(df_until_pos, breakout_history, symbol)
-                    if flip:
+                    if flip and self.should_print_pattern('flips'):
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
                         # Indiquer la direction attendue après le flip
@@ -523,12 +530,13 @@ class StockScanner:
                 if self.is_pattern_enabled('breakouts'):
                     breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, last_breakout_direction, last_breakout_level, symbol)
                     if breakout:
-                        last_row = df_until_pos.iloc[-1]
-                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                        # Indiquer la direction du breakout
-                        direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                        breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
+                        if self.should_print_pattern('breakouts'):
+                            last_row = df_until_pos.iloc[-1]
+                            date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
+                            # Indiquer la direction du breakout
+                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                            breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                            print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
 
                         # Met à jour la direction et le niveau du dernier breakout
                         last_breakout_direction = breakout['direction']
@@ -786,7 +794,7 @@ class StockScanner:
                     # Vérifie flip si activé
                     if self.is_pattern_enabled('flips'):
                         flip = self.check_realtime_flip(bars_data, breakout_history)
-                        if flip:
+                        if flip and self.should_print_pattern('flips'):
                             # Indiquer la direction attendue après le flip
                             if flip['type'] == 'flip_resistance_to_support':
                                 direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
@@ -798,10 +806,11 @@ class StockScanner:
                     if self.is_pattern_enabled('breakouts'):
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels, last_breakout_direction, last_breakout_level)
                         if breakout:
-                            # Indiquer la direction du breakout
-                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                            breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
+                            if self.should_print_pattern('breakouts'):
+                                # Indiquer la direction du breakout
+                                direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                                breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                                print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
 
                             # Met à jour la direction, le niveau et sauvegarde
                             last_breakout_direction = breakout['direction']
