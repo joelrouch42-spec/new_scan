@@ -512,11 +512,11 @@ class StockScanner:
                     if flip:
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                        # Indiquer la direction du flip
+                        # Indiquer la direction attendue après le flip
                         if flip['type'] == 'flip_resistance_to_support':
-                            direction = 'DOWN'  # Prix revient d'en haut
+                            direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
                         else:
-                            direction = 'UP'  # Prix revient d'en bas
+                            direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
                         print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
@@ -787,11 +787,11 @@ class StockScanner:
                     if self.is_pattern_enabled('flips'):
                         flip = self.check_realtime_flip(bars_data, breakout_history)
                         if flip:
-                            # Indiquer la direction du flip
+                            # Indiquer la direction attendue après le flip
                             if flip['type'] == 'flip_resistance_to_support':
-                                direction = 'DOWN'  # Prix revient d'en haut
+                                direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
                             else:
-                                direction = 'UP'  # Prix revient d'en bas
+                                direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
                             print(f"FLIP: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
 
                     # Vérifie breakout si activé
