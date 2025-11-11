@@ -12,7 +12,6 @@ import numpy as np
 from scipy.signal import argrelextrema
 from typing import List, Tuple, Optional, Dict
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 
 class StockScanner:
@@ -420,14 +419,8 @@ class StockScanner:
         """
         print(f"\nGénération du graphique pour {symbol}...")
 
-        # Créer un subplot avec 2 lignes (prix + volume)
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.03,
-            subplot_titles=(f'{symbol} - {date}', 'Volume'),
-            row_heights=[0.7, 0.3]
-        )
+        # Créer un graphique simple sans volume
+        fig = go.Figure()
 
         # Candlestick chart
         fig.add_trace(
@@ -440,8 +433,7 @@ class StockScanner:
                 name='OHLC',
                 increasing_line_color='green',
                 decreasing_line_color='red'
-            ),
-            row=1, col=1
+            )
         )
 
         # Lignes de support (vertes)
@@ -451,8 +443,7 @@ class StockScanner:
                 line_dash="dash",
                 line_color="green",
                 annotation_text=f"S: ${support:.2f}",
-                annotation_position="right",
-                row=1, col=1
+                annotation_position="right"
             )
 
         # Lignes de résistance (rouges)
@@ -462,8 +453,7 @@ class StockScanner:
                 line_dash="dash",
                 line_color="red",
                 annotation_text=f"R: ${resistance:.2f}",
-                annotation_position="right",
-                row=1, col=1
+                annotation_position="right"
             )
 
         # Marqueurs pour breakouts et flips
@@ -515,8 +505,7 @@ class StockScanner:
                         name='Breakouts',
                         hovertext=text,
                         hoverinfo='text'
-                    ),
-                    row=1, col=1
+                    )
                 )
 
         # Ajouter les marqueurs de flips
@@ -537,36 +526,19 @@ class StockScanner:
                         name='Flips',
                         hovertext=text,
                         hoverinfo='text'
-                    ),
-                    row=1, col=1
+                    )
                 )
-
-        # Volume
-        colors = ['red' if close < open else 'green'
-                  for close, open in zip(df['Close'], df['Open'])]
-        fig.add_trace(
-            go.Bar(
-                x=df['Date'],
-                y=df['Volume'],
-                name='Volume',
-                marker_color=colors,
-                showlegend=False
-            ),
-            row=2, col=1
-        )
 
         # Mise en forme
         fig.update_layout(
             title=f'{symbol} - Support/Resistance & Patterns - {date}',
+            xaxis_title="Date",
+            yaxis_title="Prix ($)",
             xaxis_rangeslider_visible=False,
-            height=800,
+            height=700,
             hovermode='x unified',
             template='plotly_dark'
         )
-
-        fig.update_xaxes(title_text="Date", row=2, col=1)
-        fig.update_yaxes(title_text="Prix ($)", row=1, col=1)
-        fig.update_yaxes(title_text="Volume", row=2, col=1)
 
         # Sauvegarder
         output_file = os.path.join(self.patterns_folder, f"{date}_{symbol}_chart.html")
