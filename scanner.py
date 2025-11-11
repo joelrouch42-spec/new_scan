@@ -503,14 +503,12 @@ class StockScanner:
                     go.Scatter(
                         x=[date],
                         y=[price],
-                        mode='markers+text',
+                        mode='markers',
                         marker=dict(
                             symbol='triangle-up' if color == 'green' else 'triangle-down',
                             size=15,
                             color=color
                         ),
-                        text=text,
-                        textposition='top center' if color == 'green' else 'bottom center',
                         showlegend=i == 0,
                         name='Breakouts',
                         hovertext=text,
