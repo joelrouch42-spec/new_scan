@@ -116,63 +116,134 @@ class StockScanner:
 
         return support_clusters, resistance_clusters
 
-    def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float], last_breakout_direction: Optional[str] = None, last_breakout_level: Optional[float] = None, symbol: str = None) -> Optional[Dict]:
-        """Détecte les breakouts de support/résistance avec confirmation
-
-        Breakout = bougie N-1 CLOSE casse + bougie N CLOSE confirme
-
-        Args:
-            last_breakout_direction: 'up' si dernier breakout était résistance, 'down' si c'était support, None si aucun
-            last_breakout_level: Niveau du dernier breakout (pour détecter les retracements)
-        """
-        if len(df) < 2:
+    def detect_step_1_breakout(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
+        """Détecte les cassures step 1: bougie ENTIÈRE au-delà du niveau"""
+        if len(df) < 1:
             return None
 
         last_idx = len(df) - 1
-        prev_close = float(df['Close'].iloc[last_idx - 1])
-        current_close = float(df['Close'].iloc[last_idx])
-        prev_date = df['Date'].iloc[last_idx - 1] if 'Date' in df.columns else None
+        current_high = float(df['High'].iloc[last_idx])
+        current_low = float(df['Low'].iloc[last_idx])
+        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
 
-        # Reset de la direction si retracement significatif (3%)
-        RETRACEMENT_THRESHOLD = 0.03
-        if last_breakout_direction and last_breakout_level:
-            if last_breakout_direction == 'up' and current_close < last_breakout_level * (1 - RETRACEMENT_THRESHOLD):
-                # Prix a retracé de plus de 3% sous le dernier niveau de breakout up
-                last_breakout_direction = None
-                last_breakout_level = None
-            elif last_breakout_direction == 'down' and current_close > last_breakout_level * (1 + RETRACEMENT_THRESHOLD):
-                # Prix a remonté de plus de 3% au-dessus du dernier niveau de breakdown
-                last_breakout_direction = None
-                last_breakout_level = None
+        # Détection breakout résistance: bougie ENTIÈRE au-dessus (LOW > résistance)
+        for resistance in resistance_levels:
+            if current_low > resistance:
+                return {
+                    'type': 'step_1',
+                    'level': resistance,
+                    'original_type': 'resistance',
+                    'direction': 'up',
+                    'date': current_date
+                }
 
-        # Détection breakout résistance (vers le haut) avec confirmation
-        # Bougie N-1: CLOSE > résistance (vraie cassure)
-        # Bougie N: CLOSE > résistance (confirme)
-        if last_breakout_direction != 'up':
-            for resistance in resistance_levels:
-                if prev_close > resistance and current_close > resistance:
+        # Détection breakdown support: bougie ENTIÈRE en dessous (HIGH < support)
+        for support in support_levels:
+            if current_high < support:
+                return {
+                    'type': 'step_1',
+                    'level': support,
+                    'original_type': 'support',
+                    'direction': 'down',
+                    'date': current_date
+                }
+
+        return None
+
+    def detect_step_2_pullback(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
+        """Détecte les retournements step 2: bougie ENTIÈRE de l'autre côté du niveau"""
+        if len(df) < 1 or not step_1_list:
+            return None
+
+        last_idx = len(df) - 1
+        current_high = float(df['High'].iloc[last_idx])
+        current_low = float(df['Low'].iloc[last_idx])
+        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
+
+        # Parcourt les step 1 qui n'ont pas encore de step 2
+        for i, step_1 in enumerate(step_1_list):
+            if step_1.get('step_2_detected', False):
+                continue
+
+            level = step_1['level']
+            original_type = step_1['original_type']
+
+            # Cas 1: Après breakout résistance UP, retournement DOWN
+            # Bougie ENTIÈRE en dessous de la résistance (HIGH < résistance)
+            if original_type == 'resistance' and step_1['direction'] == 'up':
+                if current_high < level:
+                    step_1_list[i]['step_2_detected'] = True
                     return {
-                        'type': 'resistance_breakout',
-                        'level': resistance,
-                        'close': current_close,
-                        'direction': 'up',
-                        'breakout_date': prev_date,  # Date de la bougie qui a cassé (numéro 1)
-                        'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
+                        'type': 'step_2',
+                        'level': level,
+                        'original_type': original_type,
+                        'direction': step_1['direction'],
+                        'date': current_date
                     }
 
-        # Détection breakdown support (vers le bas) avec confirmation
-        # Bougie N-1: CLOSE < support (vraie cassure)
-        # Bougie N: CLOSE < support (confirme)
-        if last_breakout_direction != 'down':
-            for support in support_levels:
-                if prev_close < support and current_close < support:
+            # Cas 2: Après breakdown support DOWN, retournement UP
+            # Bougie ENTIÈRE au-dessus du support (LOW > support)
+            elif original_type == 'support' and step_1['direction'] == 'down':
+                if current_low > level:
+                    step_1_list[i]['step_2_detected'] = True
                     return {
-                        'type': 'support_breakdown',
-                        'level': support,
-                        'close': current_close,
+                        'type': 'step_2',
+                        'level': level,
+                        'original_type': original_type,
+                        'direction': step_1['direction'],
+                        'date': current_date
+                    }
+
+        return None
+
+    def detect_step_3_retest(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
+        """Détecte les retests step 3: bougie touche le niveau"""
+        if len(df) < 1 or not step_1_list:
+            return None
+
+        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
+        last_idx = len(df) - 1
+        current_high = float(df['High'].iloc[last_idx])
+        current_low = float(df['Low'].iloc[last_idx])
+        current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
+
+        # Parcourt les step 1 qui ont un step 2 mais pas encore de step 3
+        for i, step_1 in enumerate(step_1_list):
+            if not step_1.get('step_2_detected', False) or step_1.get('step_3_detected', False):
+                continue
+
+            level = step_1['level']
+            original_type = step_1['original_type']
+            tolerance_range = level * flip_tolerance
+
+            # Cas 1: Après breakout résistance, retest du niveau (devenu support)
+            # Touche par le bas: LOW proche du niveau
+            if original_type == 'resistance' and step_1['direction'] == 'up':
+                if (current_low <= level + tolerance_range and
+                    current_low >= level - tolerance_range):
+                    step_1_list[i]['step_3_detected'] = True
+                    return {
+                        'type': 'step_3',
+                        'level': level,
+                        'original_type': original_type,
+                        'new_type': 'support',
+                        'direction': 'up',
+                        'date': current_date
+                    }
+
+            # Cas 2: Après breakdown support, retest du niveau (devenu résistance)
+            # Touche par le haut: HIGH proche du niveau
+            elif original_type == 'support' and step_1['direction'] == 'down':
+                if (current_high >= level - tolerance_range and
+                    current_high <= level + tolerance_range):
+                    step_1_list[i]['step_3_detected'] = True
+                    return {
+                        'type': 'step_3',
+                        'level': level,
+                        'original_type': original_type,
+                        'new_type': 'resistance',
                         'direction': 'down',
-                        'breakout_date': prev_date,  # Date de la bougie qui a cassé (numéro 1)
-                        'timestamp': df.index[last_idx] if hasattr(df.index[last_idx], 'strftime') else str(df.index[last_idx])
+                        'date': current_date
                     }
 
         return None
@@ -685,10 +756,8 @@ class StockScanner:
 
             total_candles = len(df)
 
-            # Initialise l'historique des breakouts pour ce symbole
-            breakout_history = []
-            last_breakout_direction = None  # 'up', 'down', ou None
-            last_breakout_level = None
+            # Liste pour tracker les breakouts (step_1) et leurs états
+            step_1_list = []
 
             # Liste pour stocker les patterns détectés (pour le graphique)
             detected_patterns = []
@@ -707,80 +776,78 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
-                # Détecte les flips (role reversals) si activé
-                if self.is_pattern_enabled('flips'):
-                    flip = self.detect_flips(df_until_pos, breakout_history, symbol)
-                    if flip:
-                        last_row = df_until_pos.iloc[-1]
-                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                        # Indiquer la direction attendue après le flip
-                        if flip['type'] == 'flip_resistance_to_support':
-                            direction = 'UP'  # Ancien résistance devient support → prix soutenu UP
-                        else:
-                            direction = 'DOWN'  # Ancien support devient résistance → prix rejeté DOWN
-
-                        # Ajouter à la liste des patterns détectés pour le graphique
-                        # Numéro 3: flip (retest)
-                        detected_patterns.append({
-                            'type': 'step_3',
-                            'date': date_str,
-                            'price': flip['level'],
-                            'level': flip['level'],
-                            'direction': 'up' if flip['type'] == 'flip_resistance_to_support' else 'down',
-                            'from': flip['original_type'],
-                            'to': flip['new_type']
-                        })
-
-                        if self.should_print_pattern('flips'):
-                            print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
-
-                # Détecte breakout sur la dernière bougie de cette position si activé
+                # STEP 1: Détecte cassure (bougie ENTIÈRE au-delà du niveau)
                 if self.is_pattern_enabled('breakouts'):
-                    breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels, last_breakout_direction, last_breakout_level, symbol)
-                    if breakout:
-                        last_row = df_until_pos.iloc[-1]
-                        date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
-                        # Indiquer la direction du breakout
-                        direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                        breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                    step_1 = self.detect_step_1_breakout(df_until_pos, support_levels, resistance_levels)
+                    if step_1:
+                        # Ajoute à la liste de tracking
+                        step_1['step_2_detected'] = False
+                        step_1['step_3_detected'] = False
+                        step_1_list.append(step_1)
 
-                        # Ajouter à la liste des patterns détectés pour le graphique
-                        # Numéro 1: bougie qui casse (N-1)
+                        # Ajoute au graphique
                         detected_patterns.append({
                             'type': 'step_1',
-                            'date': breakout['breakout_date'],
-                            'price': breakout['level'],
-                            'level': breakout['level'],
-                            'direction': breakout['direction']
-                        })
-                        # Numéro 2: bougie qui confirme (N)
-                        detected_patterns.append({
-                            'type': 'step_2',
-                            'date': date_str,
-                            'price': breakout['level'],
-                            'level': breakout['level'],
-                            'direction': breakout['direction']
+                            'date': step_1['date'],
+                            'price': step_1['level'],
+                            'level': step_1['level'],
+                            'direction': step_1['direction']
                         })
 
                         if self.should_print_pattern('breakouts'):
-                            print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
+                            direction = 'UP' if step_1['direction'] == 'up' else 'DOWN'
+                            label = step_1['original_type']
+                            print(f"{symbol}: Bougie {candle_nb} ({step_1['date']}): STEP 1 - Cassure {direction} {label} à {step_1['level']:.2f}")
 
-                        # Met à jour la direction et le niveau du dernier breakout
-                        last_breakout_direction = breakout['direction']
-                        last_breakout_level = breakout['level']
-
-                        # Ajoute le breakout à l'historique
-                        breakout_history.append({
-                            'level': breakout['level'],
-                            'original_type': 'resistance' if breakout['type'] == 'resistance_breakout' else 'support',
-                            'breakout_candle': candle_nb,
-                            'breakout_date': today,
-                            'flip_detected': False  # Track si un flip a déjà été détecté pour ce breakout
+                # STEP 2: Détecte retournement (bougie ENTIÈRE de l'autre côté)
+                if self.is_pattern_enabled('breakouts'):
+                    step_2 = self.detect_step_2_pullback(df_until_pos, step_1_list)
+                    if step_2:
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': 'step_2',
+                            'date': step_2['date'],
+                            'price': step_2['level'],
+                            'level': step_2['level'],
+                            'direction': step_2['direction']
                         })
 
-                # Sauvegarde les S/R pour la première bougie testée (la plus récente) avec l'historique
+                        if self.should_print_pattern('breakouts'):
+                            direction = 'UP' if step_2['direction'] == 'up' else 'DOWN'
+                            print(f"{symbol}: Bougie {candle_nb} ({step_2['date']}): STEP 2 - Retournement pour cassure {direction} à {step_2['level']:.2f}")
+
+                # STEP 3: Détecte retest (bougie touche le niveau)
+                if self.is_pattern_enabled('flips'):
+                    step_3 = self.detect_step_3_retest(df_until_pos, step_1_list)
+                    if step_3:
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': 'step_3',
+                            'date': step_3['date'],
+                            'price': step_3['level'],
+                            'level': step_3['level'],
+                            'direction': step_3['direction'],
+                            'from': step_3['original_type'],
+                            'to': step_3['new_type']
+                        })
+
+                        if self.should_print_pattern('flips'):
+                            direction = 'UP' if step_3['direction'] == 'up' else 'DOWN'
+                            print(f"{symbol}: Bougie {candle_nb} ({step_3['date']}): STEP 3 - Retest {direction} {step_3['original_type']}->{step_3['new_type']} à {step_3['level']:.2f}")
+
+                # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
-                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, last_breakout_direction, last_breakout_level)
+                    # Convertir step_1_list en breakout_history pour compatibilité
+                    breakout_history = []
+                    for s1 in step_1_list:
+                        breakout_history.append({
+                            'level': s1['level'],
+                            'original_type': s1['original_type'],
+                            'breakout_candle': 0,
+                            'breakout_date': today,
+                            'flip_detected': s1.get('step_3_detected', False)
+                        })
+                    self.save_sr_levels(symbol, support_levels, resistance_levels, today, breakout_history, None, None)
 
             # Génère le graphique si ce symbole correspond à celui demandé
             if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
