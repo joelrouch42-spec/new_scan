@@ -514,10 +514,10 @@ class StockScanner:
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
                         # Indiquer la direction du flip
                         if flip['type'] == 'flip_resistance_to_support':
-                            direction_arrow = '↓'  # Prix revient d'en haut
+                            direction = 'DOWN'  # Prix revient d'en haut
                         else:
-                            direction_arrow = '↑'  # Prix revient d'en bas
-                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction_arrow} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                            direction = 'UP'  # Prix revient d'en bas
+                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): FLIP {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
 
                 # Détecte breakout sur la dernière bougie de cette position si activé
                 if self.is_pattern_enabled('breakouts'):
@@ -526,9 +526,9 @@ class StockScanner:
                         last_row = df_until_pos.iloc[-1]
                         date_str = last_row['Date'] if 'Date' in df_until_pos.columns else ''
                         # Indiquer la direction du breakout
-                        direction_arrow = '↑' if breakout['direction'] == 'up' else '↓'
+                        direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                         breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction_arrow} {breakout_label} à {breakout['level']:.2f}")
+                        print(f"{symbol}: Bougie {candle_nb} ({date_str}): BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
 
                         # Met à jour la direction et le niveau du dernier breakout
                         last_breakout_direction = breakout['direction']
@@ -789,19 +789,19 @@ class StockScanner:
                         if flip:
                             # Indiquer la direction du flip
                             if flip['type'] == 'flip_resistance_to_support':
-                                direction_arrow = '↓'  # Prix revient d'en haut
+                                direction = 'DOWN'  # Prix revient d'en haut
                             else:
-                                direction_arrow = '↑'  # Prix revient d'en bas
-                            print(f"FLIP: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction_arrow} {flip['original_type']}→{flip['new_type']} à {flip['level']:.2f}")
+                                direction = 'UP'  # Prix revient d'en bas
+                            print(f"FLIP: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {flip['original_type']}->{flip['new_type']} à {flip['level']:.2f}")
 
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels, last_breakout_direction, last_breakout_level)
                         if breakout:
                             # Indiquer la direction du breakout
-                            direction_arrow = '↑' if breakout['direction'] == 'up' else '↓'
+                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction_arrow} {breakout_label} à {breakout['level']:.2f}")
+                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
 
                             # Met à jour la direction, le niveau et sauvegarde
                             last_breakout_direction = breakout['direction']
