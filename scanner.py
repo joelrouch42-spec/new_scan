@@ -151,10 +151,11 @@ class StockScanner:
         return None
 
     def detect_step_2_pullback(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
-        """Détecte les retournements step 2: bougie ENTIÈRE de l'autre côté du niveau"""
+        """Détecte les retests step 2: bougie touche ou casse le niveau"""
         if len(df) < 1 or not step_1_list:
             return None
 
+        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
         last_idx = len(df) - 1
         current_high = float(df['High'].iloc[last_idx])
         current_low = float(df['Low'].iloc[last_idx])
@@ -167,11 +168,13 @@ class StockScanner:
 
             level = step_1['level']
             original_type = step_1['original_type']
+            tolerance_range = level * flip_tolerance
 
-            # Cas 1: Après breakout résistance UP, retournement DOWN
-            # Bougie ENTIÈRE en dessous de la résistance (HIGH < résistance)
+            # Cas 1: Après breakout résistance UP, retest
+            # Bougie touche la résistance (HIGH ou LOW proche du niveau)
             if original_type == 'resistance' and step_1['direction'] == 'up':
-                if current_high < level:
+                if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
+                    (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
                     step_1_list[i]['step_2_detected'] = True
                     return {
                         'type': 'step_2',
@@ -181,10 +184,11 @@ class StockScanner:
                         'date': current_date
                     }
 
-            # Cas 2: Après breakdown support DOWN, retournement UP
-            # Bougie ENTIÈRE au-dessus du support (LOW > support)
+            # Cas 2: Après breakdown support DOWN, retest
+            # Bougie touche le support (HIGH ou LOW proche du niveau)
             elif original_type == 'support' and step_1['direction'] == 'down':
-                if current_low > level:
+                if ((current_low <= level + tolerance_range and current_low >= level - tolerance_range) or
+                    (current_high >= level - tolerance_range and current_high <= level + tolerance_range)):
                     step_1_list[i]['step_2_detected'] = True
                     return {
                         'type': 'step_2',
@@ -196,15 +200,13 @@ class StockScanner:
 
         return None
 
-    def detect_step_3_retest(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
-        """Détecte les retests step 3: bougie touche le niveau"""
+    def detect_step_3_confirmation(self, df: pd.DataFrame, step_1_list: List[Dict]) -> Optional[Dict]:
+        """Détecte les confirmations step 3: bougie CLOSE au-dessus/en dessous du niveau"""
         if len(df) < 1 or not step_1_list:
             return None
 
-        flip_tolerance = self.patterns_config['support_resistance']['flip_tolerance']
         last_idx = len(df) - 1
-        current_high = float(df['High'].iloc[last_idx])
-        current_low = float(df['Low'].iloc[last_idx])
+        current_close = float(df['Close'].iloc[last_idx])
         current_date = df['Date'].iloc[last_idx] if 'Date' in df.columns else None
 
         # Parcourt les step 1 qui ont un step 2 mais pas encore de step 3
@@ -214,13 +216,11 @@ class StockScanner:
 
             level = step_1['level']
             original_type = step_1['original_type']
-            tolerance_range = level * flip_tolerance
 
-            # Cas 1: Après breakout résistance, retest du niveau (devenu support)
-            # Touche par le bas: LOW proche du niveau
+            # Cas 1: Après breakout résistance, confirmation
+            # Bougie CLOSE au-dessus de la résistance
             if original_type == 'resistance' and step_1['direction'] == 'up':
-                if (current_low <= level + tolerance_range and
-                    current_low >= level - tolerance_range):
+                if current_close > level:
                     step_1_list[i]['step_3_detected'] = True
                     return {
                         'type': 'step_3',
@@ -231,11 +231,10 @@ class StockScanner:
                         'date': current_date
                     }
 
-            # Cas 2: Après breakdown support, retest du niveau (devenu résistance)
-            # Touche par le haut: HIGH proche du niveau
+            # Cas 2: Après breakdown support, confirmation
+            # Bougie CLOSE en dessous du support
             elif original_type == 'support' and step_1['direction'] == 'down':
-                if (current_high >= level - tolerance_range and
-                    current_high <= level + tolerance_range):
+                if current_close < level:
                     step_1_list[i]['step_3_detected'] = True
                     return {
                         'type': 'step_3',
@@ -570,13 +569,13 @@ class StockScanner:
                 step_2_dates.append(pattern_date)
                 step_2_prices.append(pattern['price'])
                 direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_2_texts.append(f"2: Retournement<br>Bougie entière de l'autre côté<br>{direction} @ ${pattern_level:.2f}")
+                step_2_texts.append(f"2: Retest<br>Bougie touche le niveau<br>{direction} @ ${pattern_level:.2f}")
 
             elif pattern_type == 'step_3':
                 step_3_dates.append(pattern_date)
                 step_3_prices.append(pattern['price'])
                 direction = 'UP' if pattern['direction'] == 'up' else 'DOWN'
-                step_3_texts.append(f"3: Retest {direction}<br>{pattern['from']}->{pattern['to']}<br>@ ${pattern_level:.2f}")
+                step_3_texts.append(f"3: Confirmation<br>CLOSE {direction}<br>@ ${pattern_level:.2f}")
 
         # Ajouter les marqueurs numéro 1 (cassure)
         if step_1_dates:
@@ -804,11 +803,11 @@ class StockScanner:
 
                         if self.should_print_pattern('breakouts'):
                             direction = 'UP' if step_2['direction'] == 'up' else 'DOWN'
-                            print(f"{symbol}: Bougie {candle_nb} ({step_2['date']}): STEP 2 - Retournement pour cassure {direction} à {step_2['level']:.2f}")
+                            print(f"{symbol}: Bougie {candle_nb} ({step_2['date']}): STEP 2 - Retest {direction} à {step_2['level']:.2f}")
 
-                # STEP 3: Détecte retest (bougie touche le niveau)
+                # STEP 3: Détecte confirmation (bougie CLOSE au-dessus/en dessous)
                 if self.is_pattern_enabled('flips'):
-                    step_3 = self.detect_step_3_retest(df_until_pos, step_1_list)
+                    step_3 = self.detect_step_3_confirmation(df_until_pos, step_1_list)
                     if step_3:
                         # Trouve le step_1 correspondant et ajoute la séquence complète au graphique
                         for i, s1 in enumerate(step_1_list):
@@ -846,7 +845,7 @@ class StockScanner:
 
                         if self.should_print_pattern('flips'):
                             direction = 'UP' if step_3['direction'] == 'up' else 'DOWN'
-                            print(f"{symbol}: Bougie {candle_nb} ({step_3['date']}): STEP 3 - Retest {direction} {step_3['original_type']}->{step_3['new_type']} à {step_3['level']:.2f}")
+                            print(f"{symbol}: Bougie {candle_nb} ({step_3['date']}): STEP 3 - Confirmation CLOSE {direction} à {step_3['level']:.2f}")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
