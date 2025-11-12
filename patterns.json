@@ -8,13 +8,13 @@
     },
     {
       "name": "engulfing",
-      "enabled": true,
+      "enabled": false,
       "print_alerts": true,
       "description": "Détection des Engulfing Patterns (Bullish et Bearish)"
     },
     {
       "name": "pinbar",
-      "enabled": true,
+      "enabled": false,
       "print_alerts": true,
       "description": "Détection des Pin Bars / Rejection Candles (Hammer et Shooting Star)"
     },
