@@ -149,6 +149,68 @@ class StockScanner:
 
         return None
 
+    def detect_engulfing(self, df: pd.DataFrame) -> Optional[Dict]:
+        """Détecte les Engulfing Patterns (Bullish et Bearish)
+
+        Bullish Engulfing: bougie verte englobe complètement une bougie rouge précédente
+        Bearish Engulfing: bougie rouge englobe complètement une bougie verte précédente
+        """
+        if len(df) < 2:
+            return None
+
+        last_idx = len(df) - 1
+        prev_idx = last_idx - 1
+
+        # Bougie précédente
+        prev_open = float(df['Open'].iloc[prev_idx])
+        prev_close = float(df['Close'].iloc[prev_idx])
+        prev_high = float(df['High'].iloc[prev_idx])
+        prev_low = float(df['Low'].iloc[prev_idx])
+
+        # Bougie actuelle
+        current_open = float(df['Open'].iloc[last_idx])
+        current_close = float(df['Close'].iloc[last_idx])
+        current_high = float(df['High'].iloc[last_idx])
+        current_low = float(df['Low'].iloc[last_idx])
+
+        # Body sizes (pour éviter les bougies doji insignifiantes)
+        prev_body = abs(prev_close - prev_open)
+        current_body = abs(current_close - current_open)
+
+        # Minimum body size (0.5% du prix pour éviter les doji)
+        min_body_size = current_close * 0.005
+
+        if prev_body < min_body_size or current_body < min_body_size:
+            return None
+
+        # BULLISH ENGULFING
+        # Bougie 1: bearish (close < open)
+        # Bougie 2: bullish (close > open) et englobe complètement le body de bougie 1
+        if prev_close < prev_open and current_close > current_open:
+            if current_open <= prev_close and current_close >= prev_open:
+                return {
+                    'type': 'bullish_engulfing',
+                    'direction': 'up',
+                    'price': current_close,
+                    'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                    'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                }
+
+        # BEARISH ENGULFING
+        # Bougie 1: bullish (close > open)
+        # Bougie 2: bearish (close < open) et englobe complètement le body de bougie 1
+        if prev_close > prev_open and current_close < current_open:
+            if current_open >= prev_close and current_close <= prev_open:
+                return {
+                    'type': 'bearish_engulfing',
+                    'direction': 'down',
+                    'price': current_close,
+                    'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                    'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                }
+
+        return None
+
     def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
@@ -317,22 +379,45 @@ class StockScanner:
         breakout_down_prices = []
         breakout_down_texts = []
 
+        # Marqueurs pour les engulfing patterns
+        engulfing_bull_dates = []
+        engulfing_bull_prices = []
+        engulfing_bull_texts = []
+
+        engulfing_bear_dates = []
+        engulfing_bear_prices = []
+        engulfing_bear_texts = []
+
         for pattern in detected_patterns:
             pattern_date = pattern['date']
             pattern_type = pattern['type']
-            pattern_level = pattern['level']
-            pattern_close = pattern['close']
             direction = pattern['direction']
 
             if pattern_type == 'resistance_breakout':
+                pattern_level = pattern['level']
+                pattern_close = pattern['close']
                 breakout_up_dates.append(pattern_date)
                 breakout_up_prices.append(pattern_level)
                 breakout_up_texts.append(f"BREAKOUT UP<br>Résistance @ ${pattern_level:.2f}<br>Close: ${pattern_close:.2f}")
 
             elif pattern_type == 'support_breakdown':
+                pattern_level = pattern['level']
+                pattern_close = pattern['close']
                 breakout_down_dates.append(pattern_date)
                 breakout_down_prices.append(pattern_level)
                 breakout_down_texts.append(f"BREAKDOWN<br>Support @ ${pattern_level:.2f}<br>Close: ${pattern_close:.2f}")
+
+            elif pattern_type == 'bullish_engulfing':
+                price = pattern['price']
+                engulfing_bull_dates.append(pattern_date)
+                engulfing_bull_prices.append(price)
+                engulfing_bull_texts.append(f"BULLISH ENGULFING<br>Price: ${price:.2f}<br>Retournement haussier")
+
+            elif pattern_type == 'bearish_engulfing':
+                price = pattern['price']
+                engulfing_bear_dates.append(pattern_date)
+                engulfing_bear_prices.append(price)
+                engulfing_bear_texts.append(f"BEARISH ENGULFING<br>Price: ${price:.2f}<br>Retournement baissier")
 
         # Ajouter les marqueurs de breakout UP (vert)
         if breakout_up_dates:
@@ -368,6 +453,44 @@ class StockScanner:
                     ),
                     name='Breakdown',
                     hovertext=breakout_down_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs d'engulfing bullish (étoile verte)
+        if engulfing_bull_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=engulfing_bull_dates,
+                    y=engulfing_bull_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='star',
+                        size=18,
+                        color='lightgreen',
+                        line=dict(width=2, color='darkgreen')
+                    ),
+                    name='Bullish Engulfing',
+                    hovertext=engulfing_bull_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs d'engulfing bearish (étoile rouge)
+        if engulfing_bear_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=engulfing_bear_dates,
+                    y=engulfing_bear_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='star',
+                        size=18,
+                        color='orange',
+                        line=dict(width=2, color='darkred')
+                    ),
+                    name='Bearish Engulfing',
+                    hovertext=engulfing_bear_texts,
                     hoverinfo='text'
                 )
             )
@@ -518,6 +641,25 @@ class StockScanner:
                             direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): BREAKOUT {direction} {label} à {breakout['level']:.2f}")
+
+                # Détecte engulfing patterns
+                if self.is_pattern_enabled('engulfing'):
+                    engulfing = self.detect_engulfing(df_until_pos)
+                    if engulfing:
+                        # Extrait la date de la dernière bougie
+                        current_date = df_until_pos['Date'].iloc[-1]
+
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': engulfing['type'],
+                            'date': current_date,
+                            'price': engulfing['price'],
+                            'direction': engulfing['direction']
+                        })
+
+                        if self.should_print_pattern('engulfing'):
+                            pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:

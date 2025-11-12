@@ -5,6 +5,12 @@
       "enabled": true,
       "print_alerts": true,
       "description": "Détection des cassures de support/résistance"
+    },
+    {
+      "name": "engulfing",
+      "enabled": true,
+      "print_alerts": true,
+      "description": "Détection des Engulfing Patterns (Bullish et Bearish)"
     }
   ],
   "support_resistance": {
