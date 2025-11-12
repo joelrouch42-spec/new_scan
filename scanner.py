@@ -403,6 +403,84 @@ class StockScanner:
 
         return None
 
+    def detect_combo_pattern(self, df: pd.DataFrame, support_levels: List[float] = None, resistance_levels: List[float] = None) -> Optional[Dict]:
+        """Détecte les combos Pin Bar + Engulfing (signal TRÈS fort)
+
+        Bullish Combo: Hammer sur support + Bullish Engulfing dans une fenêtre de N bougies
+        Bearish Combo: Shooting Star sur résistance + Bearish Engulfing dans une fenêtre de N bougies
+
+        Args:
+            df: DataFrame avec les données OHLCV
+            support_levels: Liste des niveaux de support (optionnel)
+            resistance_levels: Liste des niveaux de résistance (optionnel)
+        """
+        combo_config = self.patterns_config.get('combo', {})
+        window_size = combo_config.get('window_size', 3)
+        require_sr_proximity = combo_config.get('require_sr_proximity', True)
+
+        if len(df) < window_size:
+            return None
+
+        # Regarde les N dernières bougies pour trouver un combo
+        start_idx = max(0, len(df) - window_size)
+        window_df = df.iloc[start_idx:].copy()
+
+        # Cherche un pin bar dans la fenêtre
+        pinbar_found = None
+        pinbar_idx = None
+        for i in range(len(window_df)):
+            temp_df = window_df.iloc[:i+1].copy()
+            pinbar = self.detect_pinbar(temp_df, support_levels, resistance_levels)
+            if pinbar:
+                pinbar_found = pinbar
+                pinbar_idx = i
+                break
+
+        # Cherche un engulfing dans la fenêtre
+        engulfing_found = None
+        engulfing_idx = None
+        for i in range(1, len(window_df)):  # Engulfing nécessite 2 bougies minimum
+            temp_df = window_df.iloc[:i+1].copy()
+            engulfing = self.detect_engulfing(temp_df, support_levels, resistance_levels)
+            if engulfing:
+                engulfing_found = engulfing
+                engulfing_idx = i
+                break
+
+        # Si on a trouvé les 2 patterns dans la fenêtre
+        if pinbar_found and engulfing_found:
+            # Vérifier qu'ils sont du même type (bullish ou bearish)
+            pinbar_type = pinbar_found['type']
+            engulfing_type = engulfing_found['type']
+
+            # BULLISH COMBO: Hammer + Bullish Engulfing
+            if pinbar_type == 'bullish_pinbar' and engulfing_type == 'bullish_engulfing':
+                sr_level = pinbar_found.get('sr_level') or engulfing_found.get('sr_level')
+                return {
+                    'type': 'bullish_combo',
+                    'direction': 'up',
+                    'price': engulfing_found['price'],
+                    'low': pinbar_found['low'],
+                    'high': pinbar_found['high'],
+                    'sr_level': sr_level,
+                    'components': ['hammer', 'bullish_engulfing']
+                }
+
+            # BEARISH COMBO: Shooting Star + Bearish Engulfing
+            elif pinbar_type == 'bearish_pinbar' and engulfing_type == 'bearish_engulfing':
+                sr_level = pinbar_found.get('sr_level') or engulfing_found.get('sr_level')
+                return {
+                    'type': 'bearish_combo',
+                    'direction': 'down',
+                    'price': engulfing_found['price'],
+                    'low': pinbar_found['low'],
+                    'high': pinbar_found['high'],
+                    'sr_level': sr_level,
+                    'components': ['shooting_star', 'bearish_engulfing']
+                }
+
+        return None
+
     def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
@@ -589,6 +667,15 @@ class StockScanner:
         pinbar_bear_prices = []
         pinbar_bear_texts = []
 
+        # Marqueurs pour les combos
+        combo_bull_dates = []
+        combo_bull_prices = []
+        combo_bull_texts = []
+
+        combo_bear_dates = []
+        combo_bear_prices = []
+        combo_bear_texts = []
+
         for pattern in detected_patterns:
             pattern_date = pattern['date']
             pattern_type = pattern['type']
@@ -631,6 +718,18 @@ class StockScanner:
                 pinbar_bear_dates.append(pattern_date)
                 pinbar_bear_prices.append(high)
                 pinbar_bear_texts.append(f"BEARISH PIN BAR<br>Shooting Star @ ${pattern['price']:.2f}<br>Rejet de la résistance")
+
+            elif pattern_type == 'bullish_combo':
+                price = pattern['price']
+                combo_bull_dates.append(pattern_date)
+                combo_bull_prices.append(price)
+                combo_bull_texts.append(f"⭐ COMBO BULLISH ⭐<br>Hammer + Engulfing<br>@ ${price:.2f}<br>SIGNAL TRÈS FORT")
+
+            elif pattern_type == 'bearish_combo':
+                price = pattern['price']
+                combo_bear_dates.append(pattern_date)
+                combo_bear_prices.append(price)
+                combo_bear_texts.append(f"⭐ COMBO BEARISH ⭐<br>Shooting Star + Engulfing<br>@ ${price:.2f}<br>SIGNAL TRÈS FORT")
 
         # Ajouter les marqueurs de breakout UP (vert)
         if breakout_up_dates:
@@ -742,6 +841,44 @@ class StockScanner:
                     ),
                     name='Bearish Pin Bar',
                     hovertext=pinbar_bear_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs de combo bullish (diamant doré - signal premium)
+        if combo_bull_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=combo_bull_dates,
+                    y=combo_bull_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='diamond',
+                        size=22,
+                        color='gold',
+                        line=dict(width=3, color='orange')
+                    ),
+                    name='⭐ Combo Bullish',
+                    hovertext=combo_bull_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs de combo bearish (diamant violet - signal premium)
+        if combo_bear_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=combo_bear_dates,
+                    y=combo_bear_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='diamond',
+                        size=22,
+                        color='darkviolet',
+                        line=dict(width=3, color='purple')
+                    ),
+                    name='⭐ Combo Bearish',
+                    hovertext=combo_bear_texts,
                     hoverinfo='text'
                 )
             )
@@ -881,6 +1018,33 @@ class StockScanner:
                 # Calcule S/R sur les données jusqu'à cette position
                 support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
 
+                # Flag pour éviter détections individuelles si combo trouvé
+                combo_detected = False
+
+                # Détecte combos EN PREMIER (priorité)
+                if self.is_pattern_enabled('combo'):
+                    combo = self.detect_combo_pattern(df_until_pos, support_levels, resistance_levels)
+                    if combo:
+                        # Extrait la date de la dernière bougie
+                        current_date = df_until_pos['Date'].iloc[-1]
+
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': combo['type'],
+                            'date': current_date,
+                            'price': combo['price'],
+                            'low': combo.get('low'),
+                            'high': combo.get('high'),
+                            'direction': combo['direction']
+                        })
+
+                        if self.should_print_pattern('combo'):
+                            pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
+                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo else ""
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
+
+                        combo_detected = True  # Ne pas détecter les patterns individuels
+
                 # Détecte breakouts
                 if self.is_pattern_enabled('breakouts'):
                     breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
@@ -902,8 +1066,8 @@ class StockScanner:
                             label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): BREAKOUT {direction} {label} à {breakout['level']:.2f}")
 
-                # Détecte engulfing patterns
-                if self.is_pattern_enabled('engulfing'):
+                # Détecte engulfing patterns (seulement si pas de combo)
+                if not combo_detected and self.is_pattern_enabled('engulfing'):
                     engulfing = self.detect_engulfing(df_until_pos, support_levels, resistance_levels)
                     if engulfing:
                         # Extrait la date de la dernière bougie
@@ -922,8 +1086,8 @@ class StockScanner:
                             sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing else ""
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
-                # Détecte pin bars
-                if self.is_pattern_enabled('pinbar'):
+                # Détecte pin bars (seulement si pas de combo)
+                if not combo_detected and self.is_pattern_enabled('pinbar'):
                     pinbar = self.detect_pinbar(df_until_pos, support_levels, resistance_levels)
                     if pinbar:
                         # Extrait la date de la dernière bougie
