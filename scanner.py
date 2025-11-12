@@ -205,7 +205,7 @@ class StockScanner:
 
         # Vérifier configuration S/R proximity
         engulfing_config = self.patterns_config.get('engulfing', {})
-        require_sr_proximity = engulfing_config.get('require_sr_proximity', False)
+        require_sr_proximity = engulfing_config.get('require_sr_proximity', True)
         sr_tolerance_percent = engulfing_config.get('sr_tolerance_percent', 2) / 100.0
 
         # BULLISH ENGULFING
@@ -330,7 +330,7 @@ class StockScanner:
 
         # Configuration
         pinbar_config = self.patterns_config.get('pinbar', {})
-        require_sr_proximity = pinbar_config.get('require_sr_proximity', False)
+        require_sr_proximity = pinbar_config.get('require_sr_proximity', True)
         sr_tolerance_percent = pinbar_config.get('sr_tolerance_percent', 2) / 100.0
         min_wick_body_ratio = pinbar_config.get('min_wick_body_ratio', 2.0)
 
