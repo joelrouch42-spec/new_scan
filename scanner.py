@@ -1220,7 +1220,7 @@ class StockScanner:
             return None
 
     def get_last_bars_ibkr(self, ib, symbol):
-        """Récupère les 2 dernières bougies depuis IBKR"""
+        """Récupère les 5 dernières bougies depuis IBKR pour détection combo"""
         try:
             contract = Stock(symbol, 'SMART', 'USD')
             qualified = ib.qualifyContracts(contract)
@@ -1231,11 +1231,11 @@ class StockScanner:
 
             contract = qualified[0]
 
-            # Demande les 2 dernières bougies daily
+            # Demande les 5 dernières bougies daily (pour combo window = 3)
             bars = ib.reqHistoricalData(
                 contract,
                 endDateTime='',
-                durationStr='2 D',
+                durationStr='5 D',
                 barSizeSetting='1 day',
                 whatToShow='TRADES',
                 useRTH=True,
@@ -1243,28 +1243,31 @@ class StockScanner:
                 timeout=5
             )
 
-            if not bars or len(bars) < 2:
-                print(f"Pas assez de données pour {symbol}")
+            if not bars or len(bars) < 5:
+                print(f"Pas assez de données pour {symbol} (reçu {len(bars) if bars else 0} bougies)")
                 return None
 
-            # Retourne les 2 dernières bougies
-            # Convertir la date en EST
+            # Retourne les 5 bougies sous forme de liste
             est_tz = ZoneInfo('America/New_York')
-            current_date = bars[-1].date
-            if hasattr(current_date, 'tzinfo') and current_date.tzinfo is not None:
-                date_est = current_date.astimezone(est_tz)
-            else:
-                date_est = current_date
 
-            return {
-                'prev_high': bars[-2].high,
-                'prev_low': bars[-2].low,
-                'prev_close': bars[-2].close,
-                'current_high': bars[-1].high,
-                'current_low': bars[-1].low,
-                'current_close': bars[-1].close,
-                'current_date': date_est.strftime('%Y-%m-%d')
-            }
+            bars_list = []
+            for bar in bars:
+                bar_date = bar.date
+                if hasattr(bar_date, 'tzinfo') and bar_date.tzinfo is not None:
+                    date_est = bar_date.astimezone(est_tz)
+                else:
+                    date_est = bar_date
+
+                bars_list.append({
+                    'Date': date_est.strftime('%Y-%m-%d'),
+                    'Open': bar.open,
+                    'High': bar.high,
+                    'Low': bar.low,
+                    'Close': bar.close,
+                    'Volume': bar.volume
+                })
+
+            return bars_list
 
         except Exception as e:
             print(f"Erreur récupération {symbol}: {e}")
@@ -1365,28 +1368,18 @@ class StockScanner:
                     support_levels = sr_data[symbol]['support_levels']
                     resistance_levels = sr_data[symbol]['resistance_levels']
 
-                    # Récupère les données IBKR
-                    bars_data = self.get_last_bars_ibkr(ib, symbol)
+                    # Récupère les 5 dernières bougies depuis IBKR
+                    bars_list = self.get_last_bars_ibkr(ib, symbol)
 
-                    if not bars_data:
+                    if not bars_list:
                         continue
 
-                    # Convertir bars_data en DataFrame pour les détections
-                    df = pd.DataFrame([{
-                        'Date': bars_data['prev_date'],
-                        'Open': bars_data['prev_open'],
-                        'High': bars_data['prev_high'],
-                        'Low': bars_data['prev_low'],
-                        'Close': bars_data['prev_close'],
-                        'Volume': 0
-                    }, {
-                        'Date': bars_data['current_date'],
-                        'Open': bars_data['current_open'],
-                        'High': bars_data['current_high'],
-                        'Low': bars_data['current_low'],
-                        'Close': bars_data['current_close'],
-                        'Volume': 0
-                    }])
+                    # Convertir la liste en DataFrame pour les détections
+                    df = pd.DataFrame(bars_list)
+
+                    # Extraire les infos pour breakout (2 dernières bougies)
+                    current_bar = bars_list[-1]
+                    prev_bar = bars_list[-2]
 
                     combo_detected = False
 
@@ -1396,17 +1389,24 @@ class StockScanner:
                         if combo and self.should_print_pattern('combo'):
                             pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
                             sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else ""
-                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${combo['price']:.2f}{sr_info}")
+                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${combo['price']:.2f}{sr_info}")
                             combo_detected = True
 
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
+                        bars_data = {
+                            'prev_close': prev_bar['Close'],
+                            'current_high': current_bar['High'],
+                            'current_low': current_bar['Low'],
+                            'current_close': current_bar['Close'],
+                            'current_date': current_bar['Date']
+                        }
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
                         if breakout and self.should_print_pattern('breakouts'):
                             # Indiquer la direction du breakout
                             direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                            print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
+                            print(f"BREAKOUT: {symbol} ({current_bar['Date']}) ${current_bar['Close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
 
                     # Détecte engulfing (si pas de combo et si activé)
                     if not combo_detected and self.is_pattern_enabled('engulfing'):
@@ -1414,7 +1414,7 @@ class StockScanner:
                         if engulfing and self.should_print_pattern('engulfing'):
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
                             sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
-                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
                     # Détecte pin bars (si pas de combo et si activé)
                     if not combo_detected and self.is_pattern_enabled('pinbar'):
@@ -1423,7 +1423,7 @@ class StockScanner:
                             pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
                             sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
                             wick_ratio = pinbar.get('wick_ratio', 0)
-                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
+                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
                 time.sleep(update_interval)
 
