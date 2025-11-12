@@ -271,6 +271,138 @@ class StockScanner:
 
         return None
 
+    def detect_pinbar(self, df: pd.DataFrame, support_levels: List[float] = None, resistance_levels: List[float] = None) -> Optional[Dict]:
+        """Détecte les Pin Bars / Rejection Candles (Hammer et Shooting Star)
+
+        Bullish Pin Bar (Hammer): longue mèche basse + petit body en haut = rejet du support
+        Bearish Pin Bar (Shooting Star): longue mèche haute + petit body en bas = rejet de la résistance
+
+        Args:
+            df: DataFrame avec les données OHLCV
+            support_levels: Liste des niveaux de support (optionnel)
+            resistance_levels: Liste des niveaux de résistance (optionnel)
+        """
+        if len(df) < 1:
+            return None
+
+        last_idx = len(df) - 1
+
+        # Bougie actuelle
+        open_price = float(df['Open'].iloc[last_idx])
+        close_price = float(df['Close'].iloc[last_idx])
+        high_price = float(df['High'].iloc[last_idx])
+        low_price = float(df['Low'].iloc[last_idx])
+
+        # Calcul du body et des mèches
+        body_top = max(open_price, close_price)
+        body_bottom = min(open_price, close_price)
+        body_size = abs(close_price - open_price)
+
+        upper_wick = high_price - body_top
+        lower_wick = body_bottom - low_price
+
+        total_range = high_price - low_price
+
+        # Éviter division par zéro
+        if total_range == 0 or body_size == 0:
+            return None
+
+        # Configuration
+        pinbar_config = self.patterns_config.get('pinbar', {})
+        require_sr_proximity = pinbar_config.get('require_sr_proximity', False)
+        sr_tolerance_percent = pinbar_config.get('sr_tolerance_percent', 2) / 100.0
+        min_wick_body_ratio = pinbar_config.get('min_wick_body_ratio', 2.0)
+
+        # BULLISH PIN BAR (Hammer)
+        # - Longue mèche basse (au moins min_wick_body_ratio * body_size)
+        # - Body dans le 1/3 supérieur de la bougie
+        # - Petite ou pas de mèche haute
+        if lower_wick >= min_wick_body_ratio * body_size:
+            # Vérifier que le body est dans le tiers supérieur
+            body_position = (body_bottom - low_price) / total_range
+            if body_position >= 0.66:  # Body dans les 33% supérieurs
+                # Vérifier que la mèche haute est petite
+                if upper_wick <= body_size:
+                    # Filtre S/R si activé
+                    if require_sr_proximity and support_levels:
+                        near_support = False
+                        nearest_level = None
+                        for support in support_levels:
+                            # La mèche basse doit toucher le support
+                            distance = abs(low_price - support) / support
+                            if distance <= sr_tolerance_percent:
+                                near_support = True
+                                nearest_level = support
+                                break
+
+                        if not near_support:
+                            return None
+
+                        return {
+                            'type': 'bullish_pinbar',
+                            'direction': 'up',
+                            'price': close_price,
+                            'low': low_price,
+                            'high': high_price,
+                            'sr_level': nearest_level,
+                            'wick_ratio': lower_wick / body_size if body_size > 0 else 0
+                        }
+                    else:
+                        return {
+                            'type': 'bullish_pinbar',
+                            'direction': 'up',
+                            'price': close_price,
+                            'low': low_price,
+                            'high': high_price,
+                            'wick_ratio': lower_wick / body_size if body_size > 0 else 0
+                        }
+
+        # BEARISH PIN BAR (Shooting Star)
+        # - Longue mèche haute (au moins min_wick_body_ratio * body_size)
+        # - Body dans le 1/3 inférieur de la bougie
+        # - Petite ou pas de mèche basse
+        if upper_wick >= min_wick_body_ratio * body_size:
+            # Vérifier que le body est dans le tiers inférieur
+            body_position = (high_price - body_top) / total_range
+            if body_position >= 0.66:  # Body dans les 33% inférieurs
+                # Vérifier que la mèche basse est petite
+                if lower_wick <= body_size:
+                    # Filtre S/R si activé
+                    if require_sr_proximity and resistance_levels:
+                        near_resistance = False
+                        nearest_level = None
+                        for resistance in resistance_levels:
+                            # La mèche haute doit toucher la résistance
+                            distance = abs(high_price - resistance) / resistance
+                            if distance <= sr_tolerance_percent:
+                                near_resistance = True
+                                nearest_level = resistance
+                                break
+
+                        if not near_resistance:
+                            return None
+
+                        return {
+                            'type': 'bearish_pinbar',
+                            'direction': 'down',
+                            'price': close_price,
+                            'low': low_price,
+                            'high': high_price,
+                            'sr_level': nearest_level,
+                            'wick_ratio': upper_wick / body_size if body_size > 0 else 0
+                        }
+                    else:
+                        return {
+                            'type': 'bearish_pinbar',
+                            'direction': 'down',
+                            'price': close_price,
+                            'low': low_price,
+                            'high': high_price,
+                            'wick_ratio': upper_wick / body_size if body_size > 0 else 0
+                        }
+
+        return None
+
     def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
         """Sauvegarde les niveaux S/R pour un symbole"""
         os.makedirs(self.patterns_folder, exist_ok=True)
@@ -448,6 +580,15 @@ class StockScanner:
         engulfing_bear_prices = []
         engulfing_bear_texts = []
 
+        # Marqueurs pour les pin bars
+        pinbar_bull_dates = []
+        pinbar_bull_prices = []
+        pinbar_bull_texts = []
+
+        pinbar_bear_dates = []
+        pinbar_bear_prices = []
+        pinbar_bear_texts = []
+
         for pattern in detected_patterns:
             pattern_date = pattern['date']
             pattern_type = pattern['type']
@@ -478,6 +619,18 @@ class StockScanner:
                 engulfing_bear_dates.append(pattern_date)
                 engulfing_bear_prices.append(price)
                 engulfing_bear_texts.append(f"BEARISH ENGULFING<br>Price: ${price:.2f}<br>Retournement baissier")
+
+            elif pattern_type == 'bullish_pinbar':
+                low = pattern.get('low', pattern['price'])
+                pinbar_bull_dates.append(pattern_date)
+                pinbar_bull_prices.append(low)
+                pinbar_bull_texts.append(f"BULLISH PIN BAR<br>Hammer @ ${pattern['price']:.2f}<br>Rejet du support")
+
+            elif pattern_type == 'bearish_pinbar':
+                high = pattern.get('high', pattern['price'])
+                pinbar_bear_dates.append(pattern_date)
+                pinbar_bear_prices.append(high)
+                pinbar_bear_texts.append(f"BEARISH PIN BAR<br>Shooting Star @ ${pattern['price']:.2f}<br>Rejet de la résistance")
 
         # Ajouter les marqueurs de breakout UP (vert)
         if breakout_up_dates:
@@ -551,6 +704,44 @@ class StockScanner:
                     ),
                     name='Bearish Engulfing',
                     hovertext=engulfing_bear_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs de pin bar bullish (triangle vers bas, pointant vers le rejet)
+        if pinbar_bull_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=pinbar_bull_dates,
+                    y=pinbar_bull_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='triangle-down',
+                        size=16,
+                        color='cyan',
+                        line=dict(width=2, color='blue')
+                    ),
+                    name='Bullish Pin Bar',
+                    hovertext=pinbar_bull_texts,
+                    hoverinfo='text'
+                )
+            )
+
+        # Ajouter les marqueurs de pin bar bearish (triangle vers haut, pointant vers le rejet)
+        if pinbar_bear_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=pinbar_bear_dates,
+                    y=pinbar_bear_prices,
+                    mode='markers',
+                    marker=dict(
+                        symbol='triangle-up',
+                        size=16,
+                        color='magenta',
+                        line=dict(width=2, color='purple')
+                    ),
+                    name='Bearish Pin Bar',
+                    hovertext=pinbar_bear_texts,
                     hoverinfo='text'
                 )
             )
@@ -730,6 +921,29 @@ class StockScanner:
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
                             sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing else ""
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+
+                # Détecte pin bars
+                if self.is_pattern_enabled('pinbar'):
+                    pinbar = self.detect_pinbar(df_until_pos, support_levels, resistance_levels)
+                    if pinbar:
+                        # Extrait la date de la dernière bougie
+                        current_date = df_until_pos['Date'].iloc[-1]
+
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': pinbar['type'],
+                            'date': current_date,
+                            'price': pinbar['price'],
+                            'low': pinbar['low'],
+                            'high': pinbar['high'],
+                            'direction': pinbar['direction']
+                        })
+
+                        if self.should_print_pattern('pinbar'):
+                            pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
+                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar else ""
+                            wick_ratio = pinbar.get('wick_ratio', 0)
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
