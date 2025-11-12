@@ -442,19 +442,16 @@ class StockScanner:
     def detect_combo_pattern(self, df: pd.DataFrame, support_levels: List[float] = None, resistance_levels: List[float] = None) -> Optional[Dict]:
         """Détecte les combos Pin Bar + Engulfing (signal TRÈS fort)
 
-        LOGIQUE:
-        - L'engulfing DOIT être sur la dernière bougie (confirmation récente)
-        - Le pin bar doit être dans les N bougies précédentes (setup, N=window_size)
+        LOGIQUE FLEXIBLE:
+        - Cherche N'IMPORTE QUEL engulfing dans les N dernières bougies
+        - Cherche N'IMPORTE QUEL pin bar dans les N dernières bougies
         - Ils doivent être de la même direction (bullish ou bearish)
-        - Le pin bar doit précéder l'engulfing (logique de confirmation)
+        - Pas besoin d'être adjacents ou dans un ordre spécifique
         - Si allow_single_sr=true: au moins UN pattern doit être près d'un S/R
         - Si allow_single_sr=false: LES DEUX patterns doivent être près d'un S/R
 
-        Bullish Combo: Hammer sur support → Bullish Engulfing confirme
-        Bearish Combo: Shooting Star sur résistance → Bearish Engulfing confirme
-
         Paramètres configurables dans patterns.json (combo section):
-        - window_size: fenêtre de recherche du pin bar (défaut 5)
+        - window_size: fenêtre de recherche (défaut 5)
         - sr_tolerance_percent: tolérance S/R en % (défaut 5)
         - allow_single_sr: accepter si 1 seul pattern près S/R (défaut true)
 
@@ -464,96 +461,86 @@ class StockScanner:
             resistance_levels: Liste des niveaux de résistance (optionnel)
         """
         combo_config = self.patterns_config.get('combo', {})
-        window_size = combo_config.get('window_size', 3)
+        window_size = combo_config.get('window_size', 5)
 
-        if len(df) < 3:  # Minimum 3 bougies (pin bar peut être sur N-2, engulfing sur N)
+        if len(df) < 3:
             return None
 
-        # ÉTAPE 1: Vérifier si la DERNIÈRE bougie est un engulfing
-        engulfing = self.detect_engulfing(df, support_levels, resistance_levels)
-        if not engulfing:
-            return None  # Pas d'engulfing sur la dernière bougie = pas de combo
+        # Prendre les N dernières bougies
+        window_df = df.tail(window_size).copy()
 
-        engulfing_type = engulfing['type']
+        # ÉTAPE 1: Chercher N'IMPORTE QUEL engulfing dans la fenêtre
+        engulfing_found = None
+        for i in range(len(window_df) - 1, 0, -1):  # Du plus récent au plus ancien
+            temp_df = window_df.iloc[:i+1].copy()
+            if len(temp_df) < 2:
+                continue
+            engulfing = self.detect_engulfing(temp_df, support_levels, resistance_levels)
+            if engulfing:
+                engulfing_found = engulfing
+                break
 
-        # ÉTAPE 2: Chercher un pin bar dans les 2-3 bougies PRÉCÉDENTES
-        # On regarde les bougies N-3 à N-1 (avant la dernière)
-        lookback = min(window_size, len(df) - 1)
+        if not engulfing_found:
+            return None
+
+        engulfing_type = engulfing_found['type']
+
+        # ÉTAPE 2: Chercher N'IMPORTE QUEL pin bar de même direction dans la fenêtre
         pinbar_found = None
-
-        for i in range(1, lookback + 1):
-            # Créer un sous-dataframe jusqu'à la bougie N-i
-            temp_df = df.iloc[:-i].copy()
+        for i in range(len(window_df)):
+            temp_df = window_df.iloc[:i+1].copy()
             if len(temp_df) < 1:
                 continue
-
             pinbar = self.detect_pinbar(temp_df, support_levels, resistance_levels)
             if pinbar:
                 pinbar_type = pinbar['type']
-
-                # Vérifier que le pin bar et l'engulfing sont de la même direction
+                # Même direction que l'engulfing
                 if (pinbar_type == 'bullish_pinbar' and engulfing_type == 'bullish_engulfing') or \
                    (pinbar_type == 'bearish_pinbar' and engulfing_type == 'bearish_engulfing'):
                     pinbar_found = pinbar
-                    break  # Prendre le pin bar le plus récent qui correspond
+                    break
 
-        # ÉTAPE 3: Si on a trouvé pin bar ET engulfing de même direction = COMBO
-        if pinbar_found:
-            pinbar_type = pinbar_found['type']
+        # ÉTAPE 3: Si on a trouvé les deux de même direction = COMBO
+        if not pinbar_found:
+            return None
 
-            # BULLISH COMBO: Hammer précède Bullish Engulfing
-            if pinbar_type == 'bullish_pinbar' and engulfing_type == 'bullish_engulfing':
-                sr_level = pinbar_found.get('sr_level') or engulfing.get('sr_level')
+        pinbar_type = pinbar_found['type']
+        sr_level = pinbar_found.get('sr_level') or engulfing_found.get('sr_level')
 
-                # Vérification S/R selon configuration
-                if combo_config.get('require_sr_proximity', True):
-                    allow_single_sr = combo_config.get('allow_single_sr', False)
+        # Vérification S/R selon configuration
+        if combo_config.get('require_sr_proximity', True):
+            allow_single_sr = combo_config.get('allow_single_sr', False)
 
-                    if allow_single_sr:
-                        # Mode permissif: au moins UN doit avoir un sr_level
-                        if not sr_level:
-                            return None
-                    else:
-                        # Mode strict: LES DEUX doivent avoir un sr_level
-                        if not pinbar_found.get('sr_level') or not engulfing.get('sr_level'):
-                            return None
+            if allow_single_sr:
+                # Mode permissif: au moins UN doit avoir un sr_level
+                if not sr_level:
+                    return None
+            else:
+                # Mode strict: LES DEUX doivent avoir un sr_level
+                if not pinbar_found.get('sr_level') or not engulfing_found.get('sr_level'):
+                    return None
 
-                return {
-                    'type': 'bullish_combo',
-                    'direction': 'up',
-                    'price': engulfing['price'],
-                    'low': pinbar_found['low'],
-                    'high': engulfing.get('current_candle', {}).get('high', pinbar_found['high']),
-                    'sr_level': sr_level,
-                    'components': ['hammer', 'bullish_engulfing']
-                }
-
-            # BEARISH COMBO: Shooting Star précède Bearish Engulfing
-            elif pinbar_type == 'bearish_pinbar' and engulfing_type == 'bearish_engulfing':
-                sr_level = pinbar_found.get('sr_level') or engulfing.get('sr_level')
-
-                # Vérification S/R selon configuration
-                if combo_config.get('require_sr_proximity', True):
-                    allow_single_sr = combo_config.get('allow_single_sr', False)
-
-                    if allow_single_sr:
-                        # Mode permissif: au moins UN doit avoir un sr_level
-                        if not sr_level:
-                            return None
-                    else:
-                        # Mode strict: LES DEUX doivent avoir un sr_level
-                        if not pinbar_found.get('sr_level') or not engulfing.get('sr_level'):
-                            return None
-
-                return {
-                    'type': 'bearish_combo',
-                    'direction': 'down',
-                    'price': engulfing['price'],
-                    'low': engulfing.get('current_candle', {}).get('low', pinbar_found['low']),
-                    'high': pinbar_found['high'],
-                    'sr_level': sr_level,
-                    'components': ['shooting_star', 'bearish_engulfing']
-                }
+        # Retourner le combo selon la direction
+        if pinbar_type == 'bullish_pinbar' and engulfing_type == 'bullish_engulfing':
+            return {
+                'type': 'bullish_combo',
+                'direction': 'up',
+                'price': engulfing_found['price'],
+                'low': pinbar_found['low'],
+                'high': engulfing_found.get('current_candle', {}).get('high', pinbar_found['high']),
+                'sr_level': sr_level,
+                'components': ['hammer', 'bullish_engulfing']
+            }
+        elif pinbar_type == 'bearish_pinbar' and engulfing_type == 'bearish_engulfing':
+            return {
+                'type': 'bearish_combo',
+                'direction': 'down',
+                'price': engulfing_found['price'],
+                'low': engulfing_found.get('current_candle', {}).get('low', pinbar_found['low']),
+                'high': pinbar_found['high'],
+                'sr_level': sr_level,
+                'components': ['shooting_star', 'bearish_engulfing']
+            }
 
         return None
 
