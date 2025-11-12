@@ -442,14 +442,21 @@ class StockScanner:
     def detect_combo_pattern(self, df: pd.DataFrame, support_levels: List[float] = None, resistance_levels: List[float] = None) -> Optional[Dict]:
         """Détecte les combos Pin Bar + Engulfing (signal TRÈS fort)
 
-        LOGIQUE STRICTE:
+        LOGIQUE:
         - L'engulfing DOIT être sur la dernière bougie (confirmation récente)
-        - Le pin bar doit être dans les 2-3 bougies précédentes (setup)
+        - Le pin bar doit être dans les N bougies précédentes (setup, N=window_size)
         - Ils doivent être de la même direction (bullish ou bearish)
         - Le pin bar doit précéder l'engulfing (logique de confirmation)
+        - Si allow_single_sr=true: au moins UN pattern doit être près d'un S/R
+        - Si allow_single_sr=false: LES DEUX patterns doivent être près d'un S/R
 
         Bullish Combo: Hammer sur support → Bullish Engulfing confirme
         Bearish Combo: Shooting Star sur résistance → Bearish Engulfing confirme
+
+        Paramètres configurables dans patterns.json (combo section):
+        - window_size: fenêtre de recherche du pin bar (défaut 5)
+        - sr_tolerance_percent: tolérance S/R en % (défaut 5)
+        - allow_single_sr: accepter si 1 seul pattern près S/R (défaut true)
 
         Args:
             df: DataFrame avec les données OHLCV
@@ -498,11 +505,18 @@ class StockScanner:
             if pinbar_type == 'bullish_pinbar' and engulfing_type == 'bullish_engulfing':
                 sr_level = pinbar_found.get('sr_level') or engulfing.get('sr_level')
 
-                # VÉRIFICATION STRICTE: Les deux doivent avoir un sr_level valide (= près d'un S/R)
-                # Si require_sr_proximity est activé, on ne garde que les combos avec S/R
+                # Vérification S/R selon configuration
                 if combo_config.get('require_sr_proximity', True):
-                    if not sr_level or (not pinbar_found.get('sr_level') and not engulfing.get('sr_level')):
-                        return None  # Pas de S/R valide = pas un vrai combo
+                    allow_single_sr = combo_config.get('allow_single_sr', False)
+
+                    if allow_single_sr:
+                        # Mode permissif: au moins UN doit avoir un sr_level
+                        if not sr_level:
+                            return None
+                    else:
+                        # Mode strict: LES DEUX doivent avoir un sr_level
+                        if not pinbar_found.get('sr_level') or not engulfing.get('sr_level'):
+                            return None
 
                 return {
                     'type': 'bullish_combo',
@@ -518,10 +532,18 @@ class StockScanner:
             elif pinbar_type == 'bearish_pinbar' and engulfing_type == 'bearish_engulfing':
                 sr_level = pinbar_found.get('sr_level') or engulfing.get('sr_level')
 
-                # VÉRIFICATION STRICTE: Les deux doivent avoir un sr_level valide (= près d'un S/R)
+                # Vérification S/R selon configuration
                 if combo_config.get('require_sr_proximity', True):
-                    if not sr_level or (not pinbar_found.get('sr_level') and not engulfing.get('sr_level')):
-                        return None  # Pas de S/R valide = pas un vrai combo
+                    allow_single_sr = combo_config.get('allow_single_sr', False)
+
+                    if allow_single_sr:
+                        # Mode permissif: au moins UN doit avoir un sr_level
+                        if not sr_level:
+                            return None
+                    else:
+                        # Mode strict: LES DEUX doivent avoir un sr_level
+                        if not pinbar_found.get('sr_level') or not engulfing.get('sr_level'):
+                            return None
 
                 return {
                     'type': 'bearish_combo',
