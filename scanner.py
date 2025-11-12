@@ -1244,15 +1244,10 @@ class StockScanner:
         print(f"Interval de mise à jour: {update_interval}s")
         print(f"Nombre de symboles: {len(watchlist)}\n")
 
-        # Connexion IBKR
-        ib = self.connect_ibkr()
-        if not ib:
-            print("Impossible de se connecter à IBKR. Arrêt.")
-            return
-
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
         # ÉTAPE INITIALE: Calculer les S/R pour chaque symbole
+        # download_ibkr_data() gère sa propre connexion IBKR
         print(f"Calcul des S/R pour la date: {today}\n")
         sr_data = {}
 
@@ -1291,6 +1286,12 @@ class StockScanner:
             print(f"  Résistances: {[f'{r:.2f}' for r in resistance_levels[:5]]}")
 
         print("\nDémarrage de la boucle de détection temps réel...\n")
+
+        # Connexion IBKR pour la boucle temps réel
+        ib = self.connect_ibkr()
+        if not ib:
+            print("Impossible de se connecter à IBKR. Arrêt.")
+            return
 
         try:
             while True:
