@@ -1028,8 +1028,9 @@ class StockScanner:
         # Calculer le nombre total de bougies à charger
         total_candles_needed = candle_nb + test_stop
 
-        # Créer le dossier data s'il n'existe pas
+        # Créer les dossiers data et patterns_backtest s'ils n'existent pas
         os.makedirs(self.data_folder, exist_ok=True)
+        os.makedirs(self.patterns_folder, exist_ok=True)
 
         watchlist = self.load_watchlist()
 
@@ -1098,10 +1099,7 @@ class StockScanner:
 
                 # UTILISER LES S/R CALCULÉS UNE SEULE FOIS (pas de recalcul dans la boucle)
 
-                # Flag pour éviter détections individuelles si combo trouvé
-                combo_detected = False
-
-                # Détecte combos EN PREMIER (priorité)
+                # Détecte combos (Engulfing et Pinbar font partie de combo)
                 if self.is_pattern_enabled('combo'):
                     combo = self.detect_combo_pattern(df_until_pos, support_levels, resistance_levels)
                     if combo:
@@ -1116,19 +1114,13 @@ class StockScanner:
                             'low': combo.get('low'),
                             'high': combo.get('high'),
                             'direction': combo['direction'],
-                            'sr_level': combo.get('sr_level')  # Stocke le S/R détecté
+                            'sr_level': combo.get('sr_level')
                         })
 
                         if self.should_print_pattern('combo'):
                             pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
                             sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else " (NO S/R!)"
-
-                            # Debug: montrer tous les S/R disponibles
-                            all_sr = f" [Supports: {[f'{s:.2f}' for s in support_levels[:3]]}] [Résistances: {[f'{r:.2f}' for r in resistance_levels[:3]]}]"
-
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}{all_sr}")
-
-                        combo_detected = True  # Ne pas détecter les patterns individuels
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
 
                 # Détecte breakouts
                 if self.is_pattern_enabled('breakouts'):
@@ -1150,49 +1142,6 @@ class StockScanner:
                             direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): BREAKOUT {direction} {label} à {breakout['level']:.2f}")
-
-                # Détecte engulfing patterns (seulement si pas de combo)
-                if not combo_detected and self.is_pattern_enabled('engulfing'):
-                    engulfing = self.detect_engulfing(df_until_pos, support_levels, resistance_levels)
-                    if engulfing:
-                        # Extrait la date de la dernière bougie
-                        current_date = df_until_pos['Date'].iloc[-1]
-
-                        # Ajoute au graphique
-                        detected_patterns.append({
-                            'type': engulfing['type'],
-                            'date': current_date,
-                            'price': engulfing['price'],
-                            'direction': engulfing['direction']
-                        })
-
-                        if self.should_print_pattern('engulfing'):
-                            pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
-                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
-
-                # Détecte pin bars (seulement si pas de combo)
-                if not combo_detected and self.is_pattern_enabled('pinbar'):
-                    pinbar = self.detect_pinbar(df_until_pos, support_levels, resistance_levels)
-                    if pinbar:
-                        # Extrait la date de la dernière bougie
-                        current_date = df_until_pos['Date'].iloc[-1]
-
-                        # Ajoute au graphique
-                        detected_patterns.append({
-                            'type': pinbar['type'],
-                            'date': current_date,
-                            'price': pinbar['price'],
-                            'low': pinbar['low'],
-                            'high': pinbar['high'],
-                            'direction': pinbar['direction']
-                        })
-
-                        if self.should_print_pattern('pinbar'):
-                            pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
-                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
-                            wick_ratio = pinbar.get('wick_ratio', 0)
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
