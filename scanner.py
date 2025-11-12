@@ -1040,7 +1040,7 @@ class StockScanner:
 
                         if self.should_print_pattern('combo'):
                             pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
-                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo else ""
+                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else ""
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
 
                         combo_detected = True  # Ne pas détecter les patterns individuels
@@ -1083,7 +1083,7 @@ class StockScanner:
 
                         if self.should_print_pattern('engulfing'):
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
-                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing else ""
+                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
                 # Détecte pin bars (seulement si pas de combo)
@@ -1105,7 +1105,7 @@ class StockScanner:
 
                         if self.should_print_pattern('pinbar'):
                             pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
-                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar else ""
+                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
                             wick_ratio = pinbar.get('wick_ratio', 0)
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
