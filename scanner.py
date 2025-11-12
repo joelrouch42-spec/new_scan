@@ -1322,14 +1322,6 @@ class StockScanner:
                     # Convertir la liste en DataFrame pour les détections
                     df = pd.DataFrame(bars_list)
 
-                    # DEBUG: afficher les infos de la dernière bougie
-                    current_bar = bars_list[-1]
-                    closest_support = min(support_levels, key=lambda x: abs(x - current_bar['Close'])) if support_levels else None
-                    closest_resistance = min(resistance_levels, key=lambda x: abs(x - current_bar['Close'])) if resistance_levels else None
-                    s_str = f"{closest_support:.2f}" if closest_support is not None else "None"
-                    r_str = f"{closest_resistance:.2f}" if closest_resistance is not None else "None"
-                    print(f"[DEBUG] {symbol}: Close=${current_bar['Close']:.2f}, Closest S={s_str}, R={r_str}")
-
                     # Détecter engulfing
                     if self.is_pattern_enabled('engulfing'):
                         engulfing = self.detect_engulfing(df, support_levels, resistance_levels)
