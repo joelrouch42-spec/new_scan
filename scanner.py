@@ -536,10 +536,15 @@ class StockScanner:
         return None
 
     def save_sr_levels(self, symbol: str, support_levels: List[float], resistance_levels: List[float], date: str):
-        """Sauvegarde les niveaux S/R pour un symbole"""
-        os.makedirs(self.patterns_folder, exist_ok=True)
+        """Sauvegarde les niveaux S/R pour un symbole
 
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
+        IMPORTANT: Sauvegarde TOUJOURS dans patterns_backtest car les S/R sont calculés en backtest
+        """
+        base_patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+        backtest_folder = f"{base_patterns_folder}_backtest"
+        os.makedirs(backtest_folder, exist_ok=True)
+
+        filename = os.path.join(backtest_folder, f"{date}_{symbol}_sr.json")
 
         data = {
             'symbol': symbol,
@@ -553,8 +558,13 @@ class StockScanner:
             json.dump(data, f, indent=2)
 
     def load_sr_levels(self, symbol: str, date: str) -> Tuple[List[float], List[float]]:
-        """Charge les niveaux S/R depuis le fichier"""
-        filename = os.path.join(self.patterns_folder, f"{date}_{symbol}_sr.json")
+        """Charge les niveaux S/R depuis le fichier
+
+        IMPORTANT: Charge toujours depuis patterns_backtest car c'est là que les S/R sont calculés
+        """
+        base_patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+        backtest_folder = f"{base_patterns_folder}_backtest"
+        filename = os.path.join(backtest_folder, f"{date}_{symbol}_sr.json")
 
         if not os.path.exists(filename):
             return [], []
