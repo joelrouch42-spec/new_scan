@@ -221,15 +221,17 @@ class StockScanner:
                     near_support = False
                     nearest_level = None
                     for support in support_levels:
-                        # Vérifier si le low de l'engulfing est proche du support
-                        distance = abs(current_low - support) / support
-                        if distance <= sr_tolerance_percent:
+                        # LOGIQUE STRICTE: Le LOW doit TOUCHER le support (pas juste être proche)
+                        # On accepte si: low <= support <= high (le S/R traverse la bougie)
+                        # Avec une petite tolérance de 0.5% pour les imprécisions
+                        tolerance = support * 0.005
+                        if current_low - tolerance <= support <= current_high + tolerance:
                             near_support = True
                             nearest_level = support
                             break
 
                     if not near_support:
-                        return None  # Pas près d'un support, rejet
+                        return None  # Ne touche pas un support, rejet
 
                     return {
                         'type': 'bullish_engulfing',
@@ -262,15 +264,17 @@ class StockScanner:
                     near_resistance = False
                     nearest_level = None
                     for resistance in resistance_levels:
-                        # Vérifier si le high de l'engulfing est proche de la résistance
-                        distance = abs(current_high - resistance) / resistance
-                        if distance <= sr_tolerance_percent:
+                        # LOGIQUE STRICTE: Le HIGH doit TOUCHER la résistance (pas juste être proche)
+                        # On accepte si: low <= resistance <= high (le S/R traverse la bougie)
+                        # Avec une petite tolérance de 0.5% pour les imprécisions
+                        tolerance = resistance * 0.005
+                        if current_low - tolerance <= resistance <= current_high + tolerance:
                             near_resistance = True
                             nearest_level = resistance
                             break
 
                     if not near_resistance:
-                        return None  # Pas près d'une résistance, rejet
+                        return None  # Ne touche pas une résistance, rejet
 
                     return {
                         'type': 'bearish_engulfing',
@@ -352,15 +356,16 @@ class StockScanner:
                         near_support = False
                         nearest_level = None
                         for support in support_levels:
-                            # La mèche basse doit toucher le support
-                            distance = abs(low_price - support) / support
-                            if distance <= sr_tolerance_percent:
+                            # LOGIQUE STRICTE: La mèche BASSE doit TOUCHER le support
+                            # Le low doit être au support ou juste en-dessous (avec 0.5% tolérance)
+                            tolerance = support * 0.005
+                            if low_price - tolerance <= support <= high_price + tolerance:
                                 near_support = True
                                 nearest_level = support
                                 break
 
                         if not near_support:
-                            return None  # Pas près d'un support, rejet
+                            return None  # Ne touche pas un support, rejet
 
                         return {
                             'type': 'bullish_pinbar',
@@ -400,15 +405,16 @@ class StockScanner:
                         near_resistance = False
                         nearest_level = None
                         for resistance in resistance_levels:
-                            # La mèche haute doit toucher la résistance
-                            distance = abs(high_price - resistance) / resistance
-                            if distance <= sr_tolerance_percent:
+                            # LOGIQUE STRICTE: La mèche HAUTE doit TOUCHER la résistance
+                            # Le high doit être à la résistance ou juste au-dessus (avec 0.5% tolérance)
+                            tolerance = resistance * 0.005
+                            if low_price - tolerance <= resistance <= high_price + tolerance:
                                 near_resistance = True
                                 nearest_level = resistance
                                 break
 
                         if not near_resistance:
-                            return None  # Pas près d'une résistance, rejet
+                            return None  # Ne touche pas une résistance, rejet
 
                         return {
                             'type': 'bearish_pinbar',
