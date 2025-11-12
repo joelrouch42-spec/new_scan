@@ -214,7 +214,10 @@ class StockScanner:
         if prev_close < prev_open and current_close > current_open:
             if current_open <= prev_close and current_close >= prev_open:
                 # Si require_sr_proximity est activé, vérifier qu'on est près d'un support
-                if require_sr_proximity and support_levels:
+                if require_sr_proximity:
+                    if not support_levels:
+                        return None  # Pas de support disponible, rejet
+
                     near_support = False
                     nearest_level = None
                     for support in support_levels:
@@ -226,7 +229,7 @@ class StockScanner:
                             break
 
                     if not near_support:
-                        return None  # Pas près d'un support, ignorer
+                        return None  # Pas près d'un support, rejet
 
                     return {
                         'type': 'bullish_engulfing',
@@ -237,7 +240,7 @@ class StockScanner:
                         'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
                     }
                 else:
-                    # Pas de filtre S/R
+                    # Si le filtre S/R n'est pas requis, accepter le pattern
                     return {
                         'type': 'bullish_engulfing',
                         'direction': 'up',
@@ -252,7 +255,10 @@ class StockScanner:
         if prev_close > prev_open and current_close < current_open:
             if current_open >= prev_close and current_close <= prev_open:
                 # Si require_sr_proximity est activé, vérifier qu'on est près d'une résistance
-                if require_sr_proximity and resistance_levels:
+                if require_sr_proximity:
+                    if not resistance_levels:
+                        return None  # Pas de résistance disponible, rejet
+
                     near_resistance = False
                     nearest_level = None
                     for resistance in resistance_levels:
@@ -264,7 +270,7 @@ class StockScanner:
                             break
 
                     if not near_resistance:
-                        return None  # Pas près d'une résistance, ignorer
+                        return None  # Pas près d'une résistance, rejet
 
                     return {
                         'type': 'bearish_engulfing',
@@ -275,7 +281,7 @@ class StockScanner:
                         'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
                     }
                 else:
-                    # Pas de filtre S/R
+                    # Si le filtre S/R n'est pas requis, accepter le pattern
                     return {
                         'type': 'bearish_engulfing',
                         'direction': 'down',
@@ -339,7 +345,10 @@ class StockScanner:
                 # Vérifier que la mèche haute est petite
                 if upper_wick <= body_size:
                     # Filtre S/R si activé
-                    if require_sr_proximity and support_levels:
+                    if require_sr_proximity:
+                        if not support_levels:
+                            return None  # Pas de support disponible, rejet
+
                         near_support = False
                         nearest_level = None
                         for support in support_levels:
@@ -351,7 +360,7 @@ class StockScanner:
                                 break
 
                         if not near_support:
-                            return None
+                            return None  # Pas près d'un support, rejet
 
                         return {
                             'type': 'bullish_pinbar',
@@ -363,6 +372,7 @@ class StockScanner:
                             'wick_ratio': lower_wick / body_size if body_size > 0 else 0
                         }
                     else:
+                        # Si le filtre S/R n'est pas requis, accepter le pattern
                         return {
                             'type': 'bullish_pinbar',
                             'direction': 'up',
@@ -383,7 +393,10 @@ class StockScanner:
                 # Vérifier que la mèche basse est petite
                 if lower_wick <= body_size:
                     # Filtre S/R si activé
-                    if require_sr_proximity and resistance_levels:
+                    if require_sr_proximity:
+                        if not resistance_levels:
+                            return None  # Pas de résistance disponible, rejet
+
                         near_resistance = False
                         nearest_level = None
                         for resistance in resistance_levels:
@@ -395,7 +408,7 @@ class StockScanner:
                                 break
 
                         if not near_resistance:
-                            return None
+                            return None  # Pas près d'une résistance, rejet
 
                         return {
                             'type': 'bearish_pinbar',
@@ -407,6 +420,7 @@ class StockScanner:
                             'wick_ratio': upper_wick / body_size if body_size > 0 else 0
                         }
                     else:
+                        # Si le filtre S/R n'est pas requis, accepter le pattern
                         return {
                             'type': 'bearish_pinbar',
                             'direction': 'down',
