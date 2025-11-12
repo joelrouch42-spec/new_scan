@@ -221,11 +221,9 @@ class StockScanner:
                     near_support = False
                     nearest_level = None
                     for support in support_levels:
-                        # LOGIQUE STRICTE: Le LOW doit TOUCHER le support (pas juste être proche)
-                        # On accepte si: low <= support <= high (le S/R traverse la bougie)
-                        # Avec une petite tolérance de 0.5% pour les imprécisions
-                        tolerance = support * 0.005
-                        if current_low - tolerance <= support <= current_high + tolerance:
+                        # Vérifier si le low de l'engulfing est proche du support
+                        distance = abs(current_low - support) / support
+                        if distance <= sr_tolerance_percent:
                             near_support = True
                             nearest_level = support
                             break
@@ -264,11 +262,9 @@ class StockScanner:
                     near_resistance = False
                     nearest_level = None
                     for resistance in resistance_levels:
-                        # LOGIQUE STRICTE: Le HIGH doit TOUCHER la résistance (pas juste être proche)
-                        # On accepte si: low <= resistance <= high (le S/R traverse la bougie)
-                        # Avec une petite tolérance de 0.5% pour les imprécisions
-                        tolerance = resistance * 0.005
-                        if current_low - tolerance <= resistance <= current_high + tolerance:
+                        # Vérifier si le high de l'engulfing est proche de la résistance
+                        distance = abs(current_high - resistance) / resistance
+                        if distance <= sr_tolerance_percent:
                             near_resistance = True
                             nearest_level = resistance
                             break
@@ -356,10 +352,9 @@ class StockScanner:
                         near_support = False
                         nearest_level = None
                         for support in support_levels:
-                            # LOGIQUE STRICTE: La mèche BASSE doit TOUCHER le support
-                            # Le low doit être au support ou juste en-dessous (avec 0.5% tolérance)
-                            tolerance = support * 0.005
-                            if low_price - tolerance <= support <= high_price + tolerance:
+                            # La mèche basse doit toucher le support
+                            distance = abs(low_price - support) / support
+                            if distance <= sr_tolerance_percent:
                                 near_support = True
                                 nearest_level = support
                                 break
@@ -405,10 +400,9 @@ class StockScanner:
                         near_resistance = False
                         nearest_level = None
                         for resistance in resistance_levels:
-                            # LOGIQUE STRICTE: La mèche HAUTE doit TOUCHER la résistance
-                            # Le high doit être à la résistance ou juste au-dessus (avec 0.5% tolérance)
-                            tolerance = resistance * 0.005
-                            if low_price - tolerance <= resistance <= high_price + tolerance:
+                            # La mèche haute doit toucher la résistance
+                            distance = abs(high_price - resistance) / resistance
+                            if distance <= sr_tolerance_percent:
                                 near_resistance = True
                                 nearest_level = resistance
                                 break
@@ -1093,8 +1087,12 @@ class StockScanner:
 
                         if self.should_print_pattern('combo'):
                             pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
-                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else ""
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
+                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else " (NO S/R!)"
+
+                            # Debug: montrer tous les S/R disponibles
+                            all_sr = f" [Supports: {[f'{s:.2f}' for s in support_levels[:3]]}] [Résistances: {[f'{r:.2f}' for r in resistance_levels[:3]]}]"
+
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}{all_sr}")
 
                         combo_detected = True  # Ne pas détecter les patterns individuels
 
