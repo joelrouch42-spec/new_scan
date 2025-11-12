@@ -1033,24 +1033,48 @@ class StockScanner:
                             sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else " (NO S/R!)"
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
 
-                # Détecte engulfing (DEBUG TEMPORAIRE)
+                # Détecte engulfing
                 if self.is_pattern_enabled('engulfing'):
                     engulfing = self.detect_engulfing(df_until_pos, support_levels, resistance_levels)
-                    if engulfing and self.should_print_pattern('engulfing'):
+                    if engulfing:
                         current_date = df_until_pos['Date'].iloc[-1]
-                        pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
-                        sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else " (NO S/R)"
-                        print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
-                # Détecte pinbar (DEBUG TEMPORAIRE)
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': engulfing['type'],
+                            'date': current_date,
+                            'price': engulfing['price'],
+                            'direction': engulfing['direction'],
+                            'sr_level': engulfing.get('sr_level')
+                        })
+
+                        if self.should_print_pattern('engulfing'):
+                            pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
+                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else " (NO S/R)"
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+
+                # Détecte pinbar
                 if self.is_pattern_enabled('pinbar'):
                     pinbar = self.detect_pinbar(df_until_pos, support_levels, resistance_levels)
-                    if pinbar and self.should_print_pattern('pinbar'):
+                    if pinbar:
                         current_date = df_until_pos['Date'].iloc[-1]
-                        pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
-                        sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else " (NO S/R)"
-                        wick_ratio = pinbar.get('wick_ratio', 0)
-                        print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
+
+                        # Ajoute au graphique
+                        detected_patterns.append({
+                            'type': pinbar['type'],
+                            'date': current_date,
+                            'price': pinbar['price'],
+                            'low': pinbar.get('low'),
+                            'high': pinbar.get('high'),
+                            'direction': pinbar['direction'],
+                            'sr_level': pinbar.get('sr_level')
+                        })
+
+                        if self.should_print_pattern('pinbar'):
+                            pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
+                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else " (NO S/R)"
+                            wick_ratio = pinbar.get('wick_ratio', 0)
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
                 # Détecte breakouts
                 if self.is_pattern_enabled('breakouts'):
