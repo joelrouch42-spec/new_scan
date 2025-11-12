@@ -25,7 +25,14 @@ class StockScanner:
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
-        self.patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+
+        # Dossiers différents selon le mode
+        base_patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+        if self.mode == 'backtest':
+            self.patterns_folder = f"{base_patterns_folder}_backtest"
+        else:
+            self.patterns_folder = f"{base_patterns_folder}_realtime"
+
         self.chart_symbol = chart_symbol
 
     def load_watchlist(self):
@@ -770,13 +777,17 @@ class StockScanner:
                 price = pattern['price']
                 combo_bull_dates.append(pattern_date)
                 combo_bull_prices.append(price)
-                combo_bull_texts.append(f"⭐ COMBO BULLISH ⭐<br>Hammer + Engulfing<br>@ ${price:.2f}<br>SIGNAL TRÈS FORT")
+                sr_level = pattern.get('sr_level')
+                sr_text = f"<br>S/R @ ${sr_level:.2f}" if sr_level else ""
+                combo_bull_texts.append(f"⭐ COMBO BULLISH ⭐<br>Hammer + Engulfing<br>@ ${price:.2f}{sr_text}<br>SIGNAL TRÈS FORT")
 
             elif pattern_type == 'bearish_combo':
                 price = pattern['price']
                 combo_bear_dates.append(pattern_date)
                 combo_bear_prices.append(price)
-                combo_bear_texts.append(f"⭐ COMBO BEARISH ⭐<br>Shooting Star + Engulfing<br>@ ${price:.2f}<br>SIGNAL TRÈS FORT")
+                sr_level = pattern.get('sr_level')
+                sr_text = f"<br>S/R @ ${sr_level:.2f}" if sr_level else ""
+                combo_bear_texts.append(f"⭐ COMBO BEARISH ⭐<br>Shooting Star + Engulfing<br>@ ${price:.2f}{sr_text}<br>SIGNAL TRÈS FORT")
 
         # Ajouter les marqueurs de breakout UP (vert)
         if breakout_up_dates:
@@ -1051,6 +1062,19 @@ class StockScanner:
             # Liste pour stocker les patterns détectés (pour le graphique)
             detected_patterns = []
 
+            # CALCULER LES S/R UNE SEULE FOIS sur les données à test_stop
+            # Position de référence pour le calcul des S/R
+            sr_calc_pos = total_candles - test_stop
+            if sr_calc_pos <= 0:
+                continue
+
+            df_for_sr = df.iloc[:sr_calc_pos].copy()
+            support_levels, resistance_levels = self.find_support_resistance(df_for_sr)
+
+            print(f"\n{symbol}: S/R calculés sur {len(df_for_sr)} bougies")
+            print(f"  Supports: {[f'{s:.2f}' for s in support_levels[:5]]}")
+            print(f"  Résistances: {[f'{r:.2f}' for r in resistance_levels[:5]]}\n")
+
             # Boucle de test: du passé vers le présent (de test_stop vers test_start)
             for candle_nb in range(test_stop, test_start - 1, -1):
                 # Position dans le df: on enlève les N dernières bougies
@@ -1062,8 +1086,7 @@ class StockScanner:
                 # Prend les données jusqu'à cette position (exclut les N dernières bougies)
                 df_until_pos = df.iloc[:current_pos].copy()
 
-                # Calcule S/R sur les données jusqu'à cette position
-                support_levels, resistance_levels = self.find_support_resistance(df_until_pos)
+                # UTILISER LES S/R CALCULÉS UNE SEULE FOIS (pas de recalcul dans la boucle)
 
                 # Flag pour éviter détections individuelles si combo trouvé
                 combo_detected = False
@@ -1075,14 +1098,15 @@ class StockScanner:
                         # Extrait la date de la dernière bougie
                         current_date = df_until_pos['Date'].iloc[-1]
 
-                        # Ajoute au graphique
+                        # Ajoute au graphique (avec le S/R utilisé pour la détection)
                         detected_patterns.append({
                             'type': combo['type'],
                             'date': current_date,
                             'price': combo['price'],
                             'low': combo.get('low'),
                             'high': combo.get('high'),
-                            'direction': combo['direction']
+                            'direction': combo['direction'],
+                            'sr_level': combo.get('sr_level')  # Stocke le S/R détecté
                         })
 
                         if self.should_print_pattern('combo'):
@@ -1166,9 +1190,8 @@ class StockScanner:
 
             # Génère le graphique si ce symbole correspond à celui demandé
             if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
-                # Recalcule les S/R sur le DataFrame complet pour l'affichage
-                final_support_levels, final_resistance_levels = self.find_support_resistance(df)
-                self.generate_chart(symbol, df, final_support_levels, final_resistance_levels, detected_patterns, today)
+                # UTILISER LES MÊMES S/R calculés avant la boucle (pas de recalcul)
+                self.generate_chart(symbol, df, support_levels, resistance_levels, detected_patterns, today)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
