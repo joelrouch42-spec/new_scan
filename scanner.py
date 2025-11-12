@@ -1215,41 +1215,82 @@ class StockScanner:
         return None
 
     def run_realtime(self):
-        """Execute le mode temps réel"""
+        """Execute le mode temps réel
+
+        1. Charge watchlist depuis config.txt
+        2. RECALCULE les S/R en fonction de candle_nb bougies depuis IBKR
+        3. Sauvegarde les S/R dans patterns_realtime
+        4. Connexion IBKR
+        5. Boucle infinie:
+           - Pour chaque symbole: récupère 5 dernières bougies
+           - Détecte engulfing, pinbar, breakouts
+           - Print alertes
+           - Sleep 60s
+        """
+        backtest_config = self.settings['backtest']
         realtime_config = self.settings['realtime']
+        candle_nb = backtest_config['candle_nb']  # Nombre de bougies pour calculer S/R
+        interval = backtest_config['interval']
         update_interval = realtime_config['update_interval_seconds']
+
+        # Créer le dossier patterns_realtime
+        base_patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
+        realtime_folder = f"{base_patterns_folder}_realtime"
+        os.makedirs(realtime_folder, exist_ok=True)
 
         watchlist = self.load_watchlist()
         print(f"Mode: {self.mode}")
+        print(f"Nombre de bougies pour S/R: {candle_nb}")
         print(f"Interval de mise à jour: {update_interval}s")
         print(f"Nombre de symboles: {len(watchlist)}\n")
-
-        # Charge les S/R UNE FOIS à l'initialisation
-        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
-        print(f"Chargement des S/R pour la date: {today}\n")
-
-        sr_data = {}
-        for item in watchlist:
-            symbol = item['symbol']
-            support_levels, resistance_levels = self.load_sr_levels(symbol, today)
-
-            if not support_levels and not resistance_levels:
-                print(f"{symbol}: Pas de S/R pour {today} - lancer --backtest d'abord")
-                sr_data[symbol] = None
-            else:
-                sr_data[symbol] = {
-                    'support_levels': support_levels,
-                    'resistance_levels': resistance_levels
-                }
-                print(f"{symbol}: {len(support_levels)} supports, {len(resistance_levels)} résistances")
-
-        print()
 
         # Connexion IBKR
         ib = self.connect_ibkr()
         if not ib:
             print("Impossible de se connecter à IBKR. Arrêt.")
             return
+
+        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+
+        # ÉTAPE INITIALE: Calculer les S/R pour chaque symbole
+        print(f"Calcul des S/R pour la date: {today}\n")
+        sr_data = {}
+
+        for item in watchlist:
+            symbol = item['symbol']
+
+            # Télécharger candle_nb bougies pour calculer les S/R
+            df = self.download_ibkr_data(symbol, candle_nb, interval)
+
+            if df is None or len(df) == 0:
+                print(f"{symbol}: Impossible de récupérer les données pour S/R")
+                sr_data[symbol] = None
+                continue
+
+            # Calculer S/R
+            support_levels, resistance_levels = self.find_support_resistance(df)
+
+            # Sauvegarder dans patterns_realtime
+            filename = os.path.join(realtime_folder, f"{today}_{symbol}_sr.json")
+            data = {
+                'symbol': symbol,
+                'date': today,
+                'support_levels': support_levels,
+                'resistance_levels': resistance_levels
+            }
+            with open(filename, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            sr_data[symbol] = {
+                'support_levels': support_levels,
+                'resistance_levels': resistance_levels
+            }
+
+            print(f"{symbol}: S/R calculés → {len(support_levels)} supports, {len(resistance_levels)} résistances")
+            print(f"  Supports: {[f'{s:.2f}' for s in support_levels[:5]]}")
+            print(f"  Résistances: {[f'{r:.2f}' for r in resistance_levels[:5]]}")
+
+        print("\nDémarrage de la boucle de détection temps réel...\n")
 
         try:
             while True:
@@ -1264,7 +1305,7 @@ class StockScanner:
                 for item in watchlist:
                     symbol = item['symbol']
 
-                    # Utilise les S/R chargés en mémoire
+                    # Utilise les S/R calculés en mémoire
                     if sr_data[symbol] is None:
                         continue
 
@@ -1280,53 +1321,43 @@ class StockScanner:
                     # Convertir la liste en DataFrame pour les détections
                     df = pd.DataFrame(bars_list)
 
-                    # Extraire les infos pour breakout (2 dernières bougies)
-                    current_bar = bars_list[-1]
-                    prev_bar = bars_list[-2]
-
-                    combo_detected = False
-
-                    # Détecte combos EN PREMIER
-                    if self.is_pattern_enabled('combo'):
-                        combo = self.detect_combo_pattern(df, support_levels, resistance_levels)
-                        if combo and self.should_print_pattern('combo'):
-                            pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
-                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else ""
-                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${combo['price']:.2f}{sr_info}")
-                            combo_detected = True
-
-                    # Vérifie breakout si activé
-                    if self.is_pattern_enabled('breakouts'):
-                        bars_data = {
-                            'prev_close': prev_bar['Close'],
-                            'current_high': current_bar['High'],
-                            'current_low': current_bar['Low'],
-                            'current_close': current_bar['Close'],
-                            'current_date': current_bar['Date']
-                        }
-                        breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
-                        if breakout and self.should_print_pattern('breakouts'):
-                            # Indiquer la direction du breakout
-                            direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
-                            breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
-                            print(f"BREAKOUT: {symbol} ({current_bar['Date']}) ${current_bar['Close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
-
-                    # Détecte engulfing (si pas de combo et si activé)
-                    if not combo_detected and self.is_pattern_enabled('engulfing'):
+                    # Détecter engulfing
+                    if self.is_pattern_enabled('engulfing'):
                         engulfing = self.detect_engulfing(df, support_levels, resistance_levels)
                         if engulfing and self.should_print_pattern('engulfing'):
+                            current_bar = bars_list[-1]
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
                             sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
-                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] {symbol}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
-                    # Détecte pin bars (si pas de combo et si activé)
-                    if not combo_detected and self.is_pattern_enabled('pinbar'):
+                    # Détecter pinbar
+                    if self.is_pattern_enabled('pinbar'):
                         pinbar = self.detect_pinbar(df, support_levels, resistance_levels)
                         if pinbar and self.should_print_pattern('pinbar'):
-                            pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
+                            current_bar = bars_list[-1]
+                            pattern_name = 'BULLISH PIN BAR' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR'
                             sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
                             wick_ratio = pinbar.get('wick_ratio', 0)
-                            print(f"{symbol}: {current_bar['Date']}: {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] {symbol}: {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
+
+                    # Détecter breakouts
+                    if self.is_pattern_enabled('breakouts'):
+                        if len(bars_list) >= 2:
+                            current_bar = bars_list[-1]
+                            prev_bar = bars_list[-2]
+
+                            bars_data = {
+                                'prev_close': prev_bar['Close'],
+                                'current_high': current_bar['High'],
+                                'current_low': current_bar['Low'],
+                                'current_close': current_bar['Close'],
+                                'current_date': current_bar['Date']
+                            }
+                            breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
+                            if breakout and self.should_print_pattern('breakouts'):
+                                direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
+                                breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] {symbol}: BREAKOUT {direction} {breakout_label} à {breakout['level']:.2f}")
 
                 time.sleep(update_interval)
 
