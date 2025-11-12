@@ -117,35 +117,50 @@ class StockScanner:
         return support_clusters, resistance_clusters
 
     def detect_breakouts(self, df: pd.DataFrame, support_levels: List[float], resistance_levels: List[float]) -> Optional[Dict]:
-        """Détecte les breakouts de support/résistance"""
-        if len(df) < 2:
+        """Détecte les breakouts de support/résistance avec logique stricte
+
+        CRITÈRES STRICTS:
+        - Le CLOSE doit casser le niveau (pas juste high/low avec mèche)
+        - Le close précédent doit être de l'autre côté du niveau
+        - Minimum 0.3% de marge au-delà du niveau pour confirmer la cassure
+        """
+        if len(df) < 2 or not resistance_levels or not support_levels:
             return None
 
         last_idx = len(df) - 1
-        current_high = float(df['High'].iloc[last_idx])
-        current_low = float(df['Low'].iloc[last_idx])
         prev_close = float(df['Close'].iloc[last_idx - 1])
         current_close = float(df['Close'].iloc[last_idx])
 
+        # Marge de cassure: 0.3% au-delà du niveau pour confirmer
+        breakout_margin = 0.003
+
         # Détection breakout résistance (vers le haut)
+        # Le CLOSE actuel doit être au-dessus de la résistance (pas juste le high)
         for resistance in resistance_levels:
-            if prev_close < resistance and current_high > resistance:
-                return {
-                    'type': 'resistance_breakout',
-                    'level': resistance,
-                    'close': current_close,
-                    'direction': 'up'
-                }
+            # Vérifier que le close précédent était en-dessous
+            if prev_close < resistance:
+                # Vérifier que le close actuel est au-dessus AVEC marge
+                if current_close > resistance * (1 + breakout_margin):
+                    return {
+                        'type': 'resistance_breakout',
+                        'level': resistance,
+                        'close': current_close,
+                        'direction': 'up'
+                    }
 
         # Détection breakdown support (vers le bas)
+        # Le CLOSE actuel doit être en-dessous du support (pas juste le low)
         for support in support_levels:
-            if prev_close > support and current_low < support:
-                return {
-                    'type': 'support_breakdown',
-                    'level': support,
-                    'close': current_close,
-                    'direction': 'down'
-                }
+            # Vérifier que le close précédent était au-dessus
+            if prev_close > support:
+                # Vérifier que le close actuel est en-dessous AVEC marge
+                if current_close < support * (1 - breakout_margin):
+                    return {
+                        'type': 'support_breakdown',
+                        'level': support,
+                        'close': current_close,
+                        'direction': 'down'
+                    }
 
         return None
 
