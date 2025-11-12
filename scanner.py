@@ -1322,11 +1322,16 @@ class StockScanner:
                     # Convertir la liste en DataFrame pour les détections
                     df = pd.DataFrame(bars_list)
 
+                    # DEBUG: afficher les infos de la dernière bougie
+                    current_bar = bars_list[-1]
+                    closest_support = min(support_levels, key=lambda x: abs(x - current_bar['Close'])) if support_levels else None
+                    closest_resistance = min(resistance_levels, key=lambda x: abs(x - current_bar['Close'])) if resistance_levels else None
+                    print(f"[DEBUG] {symbol}: Close=${current_bar['Close']:.2f}, Closest S={closest_support:.2f if closest_support else None}, R={closest_resistance:.2f if closest_resistance else None}")
+
                     # Détecter engulfing
                     if self.is_pattern_enabled('engulfing'):
                         engulfing = self.detect_engulfing(df, support_levels, resistance_levels)
                         if engulfing and self.should_print_pattern('engulfing'):
-                            current_bar = bars_list[-1]
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
                             sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
                             print(f"[{datetime.now().strftime('%H:%M:%S')}] {symbol}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
@@ -1335,7 +1340,6 @@ class StockScanner:
                     if self.is_pattern_enabled('pinbar'):
                         pinbar = self.detect_pinbar(df, support_levels, resistance_levels)
                         if pinbar and self.should_print_pattern('pinbar'):
-                            current_bar = bars_list[-1]
                             pattern_name = 'BULLISH PIN BAR' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR'
                             sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
                             wick_ratio = pinbar.get('wick_ratio', 0)
