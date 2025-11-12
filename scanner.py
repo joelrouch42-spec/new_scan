@@ -561,8 +561,8 @@ class StockScanner:
             xaxis_title="Date",
             yaxis_title="Prix ($)",
             xaxis_rangeslider_visible=False,
-            width=1600,
-            height=1000,
+            width=2400,
+            height=1200,
             hovermode='x unified',
             template='plotly_dark'
         )
