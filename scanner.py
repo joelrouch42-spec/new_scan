@@ -598,7 +598,7 @@ class StockScanner:
             df: DataFrame avec les données OHLCV
             support_levels: Liste des niveaux de support
             resistance_levels: Liste des niveaux de résistance
-            detected_patterns: Liste des patterns détectés (breakouts et flips)
+            detected_patterns: Liste des patterns détectés (breakouts, combos, etc.)
             date: Date du scan
         """
         print(f"\nGénération du graphique pour {symbol}...")
