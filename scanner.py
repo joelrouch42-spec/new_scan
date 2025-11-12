@@ -1371,6 +1371,34 @@ class StockScanner:
                     if not bars_data:
                         continue
 
+                    # Convertir bars_data en DataFrame pour les détections
+                    df = pd.DataFrame([{
+                        'Date': bars_data['prev_date'],
+                        'Open': bars_data['prev_open'],
+                        'High': bars_data['prev_high'],
+                        'Low': bars_data['prev_low'],
+                        'Close': bars_data['prev_close'],
+                        'Volume': 0
+                    }, {
+                        'Date': bars_data['current_date'],
+                        'Open': bars_data['current_open'],
+                        'High': bars_data['current_high'],
+                        'Low': bars_data['current_low'],
+                        'Close': bars_data['current_close'],
+                        'Volume': 0
+                    }])
+
+                    combo_detected = False
+
+                    # Détecte combos EN PREMIER
+                    if self.is_pattern_enabled('combo'):
+                        combo = self.detect_combo_pattern(df, support_levels, resistance_levels)
+                        if combo and self.should_print_pattern('combo'):
+                            pattern_name = '⭐ COMBO BULLISH (Hammer + Engulfing)' if combo['type'] == 'bullish_combo' else '⭐ COMBO BEARISH (Shooting Star + Engulfing)'
+                            sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else ""
+                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${combo['price']:.2f}{sr_info}")
+                            combo_detected = True
+
                     # Vérifie breakout si activé
                     if self.is_pattern_enabled('breakouts'):
                         breakout = self.check_realtime_breakout(bars_data, support_levels, resistance_levels)
@@ -1379,6 +1407,23 @@ class StockScanner:
                             direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             breakout_label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"BREAKOUT: {symbol} ({bars_data['current_date']}) ${bars_data['current_close']:.2f} {direction} {breakout_label} à {breakout['level']:.2f}")
+
+                    # Détecte engulfing (si pas de combo et si activé)
+                    if not combo_detected and self.is_pattern_enabled('engulfing'):
+                        engulfing = self.detect_engulfing(df, support_levels, resistance_levels)
+                        if engulfing and self.should_print_pattern('engulfing'):
+                            pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
+                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else ""
+                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+
+                    # Détecte pin bars (si pas de combo et si activé)
+                    if not combo_detected and self.is_pattern_enabled('pinbar'):
+                        pinbar = self.detect_pinbar(df, support_levels, resistance_levels)
+                        if pinbar and self.should_print_pattern('pinbar'):
+                            pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
+                            sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else ""
+                            wick_ratio = pinbar.get('wick_ratio', 0)
+                            print(f"{symbol}: {bars_data['current_date']}: {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
 
                 time.sleep(update_interval)
 
