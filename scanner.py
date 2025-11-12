@@ -149,11 +149,16 @@ class StockScanner:
 
         return None
 
-    def detect_engulfing(self, df: pd.DataFrame) -> Optional[Dict]:
+    def detect_engulfing(self, df: pd.DataFrame, support_levels: List[float] = None, resistance_levels: List[float] = None) -> Optional[Dict]:
         """Détecte les Engulfing Patterns (Bullish et Bearish)
 
         Bullish Engulfing: bougie verte englobe complètement une bougie rouge précédente
         Bearish Engulfing: bougie rouge englobe complètement une bougie verte précédente
+
+        Args:
+            df: DataFrame avec les données OHLCV
+            support_levels: Liste des niveaux de support (optionnel)
+            resistance_levels: Liste des niveaux de résistance (optionnel)
         """
         if len(df) < 2:
             return None
@@ -183,31 +188,86 @@ class StockScanner:
         if prev_body < min_body_size or current_body < min_body_size:
             return None
 
+        # Vérifier configuration S/R proximity
+        engulfing_config = self.patterns_config.get('engulfing', {})
+        require_sr_proximity = engulfing_config.get('require_sr_proximity', False)
+        sr_tolerance_percent = engulfing_config.get('sr_tolerance_percent', 2) / 100.0
+
         # BULLISH ENGULFING
         # Bougie 1: bearish (close < open)
         # Bougie 2: bullish (close > open) et englobe complètement le body de bougie 1
         if prev_close < prev_open and current_close > current_open:
             if current_open <= prev_close and current_close >= prev_open:
-                return {
-                    'type': 'bullish_engulfing',
-                    'direction': 'up',
-                    'price': current_close,
-                    'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
-                    'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
-                }
+                # Si require_sr_proximity est activé, vérifier qu'on est près d'un support
+                if require_sr_proximity and support_levels:
+                    near_support = False
+                    nearest_level = None
+                    for support in support_levels:
+                        # Vérifier si le low de l'engulfing est proche du support
+                        distance = abs(current_low - support) / support
+                        if distance <= sr_tolerance_percent:
+                            near_support = True
+                            nearest_level = support
+                            break
+
+                    if not near_support:
+                        return None  # Pas près d'un support, ignorer
+
+                    return {
+                        'type': 'bullish_engulfing',
+                        'direction': 'up',
+                        'price': current_close,
+                        'sr_level': nearest_level,
+                        'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                        'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                    }
+                else:
+                    # Pas de filtre S/R
+                    return {
+                        'type': 'bullish_engulfing',
+                        'direction': 'up',
+                        'price': current_close,
+                        'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                        'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                    }
 
         # BEARISH ENGULFING
         # Bougie 1: bullish (close > open)
         # Bougie 2: bearish (close < open) et englobe complètement le body de bougie 1
         if prev_close > prev_open and current_close < current_open:
             if current_open >= prev_close and current_close <= prev_open:
-                return {
-                    'type': 'bearish_engulfing',
-                    'direction': 'down',
-                    'price': current_close,
-                    'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
-                    'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
-                }
+                # Si require_sr_proximity est activé, vérifier qu'on est près d'une résistance
+                if require_sr_proximity and resistance_levels:
+                    near_resistance = False
+                    nearest_level = None
+                    for resistance in resistance_levels:
+                        # Vérifier si le high de l'engulfing est proche de la résistance
+                        distance = abs(current_high - resistance) / resistance
+                        if distance <= sr_tolerance_percent:
+                            near_resistance = True
+                            nearest_level = resistance
+                            break
+
+                    if not near_resistance:
+                        return None  # Pas près d'une résistance, ignorer
+
+                    return {
+                        'type': 'bearish_engulfing',
+                        'direction': 'down',
+                        'price': current_close,
+                        'sr_level': nearest_level,
+                        'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                        'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                    }
+                else:
+                    # Pas de filtre S/R
+                    return {
+                        'type': 'bearish_engulfing',
+                        'direction': 'down',
+                        'price': current_close,
+                        'prev_candle': {'open': prev_open, 'close': prev_close, 'high': prev_high, 'low': prev_low},
+                        'current_candle': {'open': current_open, 'close': current_close, 'high': current_high, 'low': current_low}
+                    }
 
         return None
 
@@ -501,7 +561,8 @@ class StockScanner:
             xaxis_title="Date",
             yaxis_title="Prix ($)",
             xaxis_rangeslider_visible=False,
-            height=700,
+            width=1600,
+            height=1000,
             hovermode='x unified',
             template='plotly_dark'
         )
@@ -575,6 +636,14 @@ class StockScanner:
         os.makedirs(self.data_folder, exist_ok=True)
 
         watchlist = self.load_watchlist()
+
+        # Filtrer la watchlist si --chart est spécifié
+        if self.chart_symbol:
+            watchlist = [item for item in watchlist if item['symbol'].upper() == self.chart_symbol.upper()]
+            if not watchlist:
+                print(f"Erreur: Symbole {self.chart_symbol} non trouvé dans la watchlist")
+                return
+
         print(f"Mode: {self.mode}")
         print(f"Nombre de bougies pour S/R: {candle_nb}")
         print(f"Nombre total de bougies chargées: {total_candles_needed}")
@@ -644,7 +713,7 @@ class StockScanner:
 
                 # Détecte engulfing patterns
                 if self.is_pattern_enabled('engulfing'):
-                    engulfing = self.detect_engulfing(df_until_pos)
+                    engulfing = self.detect_engulfing(df_until_pos, support_levels, resistance_levels)
                     if engulfing:
                         # Extrait la date de la dernière bougie
                         current_date = df_until_pos['Date'].iloc[-1]
@@ -659,7 +728,8 @@ class StockScanner:
 
                         if self.should_print_pattern('engulfing'):
                             pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}")
+                            sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing else ""
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:

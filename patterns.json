@@ -20,5 +20,10 @@
     "min_touches": 2,
     "patterns_folder": "patterns",
     "description": "order: nombre de bougies de chaque côté pour détecter un extremum local. cluster_threshold: seuil de regroupement des niveaux proches (2%). flip_tolerance: tolérance pour détecter qu'on touche un niveau (1%). min_touches: nombre minimum de fois qu'un niveau doit être testé pour être valide"
+  },
+  "engulfing": {
+    "require_sr_proximity": true,
+    "sr_tolerance_percent": 2,
+    "description": "require_sr_proximity: si true, ne détecte que les engulfing près d'un S/R. sr_tolerance_percent: distance max acceptée d'un S/R (2% par défaut)"
   }
 }
