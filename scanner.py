@@ -1144,6 +1144,25 @@ class StockScanner:
                             sr_info = f" (près S/R {combo['sr_level']:.2f})" if 'sr_level' in combo and combo['sr_level'] is not None else " (NO S/R!)"
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${combo['price']:.2f}{sr_info}")
 
+                # Détecte engulfing (DEBUG TEMPORAIRE)
+                if self.is_pattern_enabled('engulfing'):
+                    engulfing = self.detect_engulfing(df_until_pos, support_levels, resistance_levels)
+                    if engulfing and self.should_print_pattern('engulfing'):
+                        current_date = df_until_pos['Date'].iloc[-1]
+                        pattern_name = 'BULLISH ENGULFING' if engulfing['type'] == 'bullish_engulfing' else 'BEARISH ENGULFING'
+                        sr_info = f" (près S/R {engulfing['sr_level']:.2f})" if 'sr_level' in engulfing and engulfing['sr_level'] is not None else " (NO S/R)"
+                        print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${engulfing['price']:.2f}{sr_info}")
+
+                # Détecte pinbar (DEBUG TEMPORAIRE)
+                if self.is_pattern_enabled('pinbar'):
+                    pinbar = self.detect_pinbar(df_until_pos, support_levels, resistance_levels)
+                    if pinbar and self.should_print_pattern('pinbar'):
+                        current_date = df_until_pos['Date'].iloc[-1]
+                        pattern_name = 'BULLISH PIN BAR (Hammer)' if pinbar['type'] == 'bullish_pinbar' else 'BEARISH PIN BAR (Shooting Star)'
+                        sr_info = f" (près S/R {pinbar['sr_level']:.2f})" if 'sr_level' in pinbar and pinbar['sr_level'] is not None else " (NO S/R)"
+                        wick_ratio = pinbar.get('wick_ratio', 0)
+                        print(f"{symbol}: Bougie {candle_nb} ({current_date}): {pattern_name} à ${pinbar['price']:.2f}{sr_info} (ratio: {wick_ratio:.1f}x)")
+
                 # Détecte breakouts
                 if self.is_pattern_enabled('breakouts'):
                     breakout = self.detect_breakouts(df_until_pos, support_levels, resistance_levels)
