@@ -5,7 +5,7 @@
     "interval": "1d",
     "data_source": "yahoo",
     "test_candle_start": 1,
-    "test_candle_stop": 2
+    "test_candle_stop": 120
   },
   "realtime": {
     "update_interval_seconds": 60,
