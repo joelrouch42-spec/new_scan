@@ -1,0 +1,7 @@
+yfinance
+pandas
+ib_insync
+nest_asyncio
+scipy
+numpy
+plotly
