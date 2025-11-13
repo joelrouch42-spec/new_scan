@@ -150,8 +150,8 @@ class StockScanner:
         except Exception as e:
             return nono
             
-    def find_support_resistance(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
-        return self.sr_analyzer.find_levels(df)
+    def find_support_resistance(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Tuple[List[float], List[float]]:
+        return self.sr_analyzer.find_levels(df, filter_high, filter_low)
 
         
     def run_backtest(self):
@@ -212,9 +212,23 @@ class StockScanner:
             idx = 0
             for candle_nb in range(test_stop, test_start - 1, -1):   # 10.9.8. ... 1
                 sr_calc_pos = total_candles - candle_nb
+
+                if sr_calc_pos >= total_candles:
+                    break
+
                 df_for_sr = df.iloc[idx:sr_calc_pos].copy()
                 idx = idx + 1
-                support_levels, resistance_levels = self.find_support_resistance(df_for_sr)
+
+                # Récupérer high/low de la bougie actuelle testée pour le filtrage
+                current_high = df['High'].iloc[sr_calc_pos]
+                current_low = df['Low'].iloc[sr_calc_pos]
+
+                # Calcul S/R avec filtrage basé sur la bougie actuelle
+                support_levels, resistance_levels = self.find_support_resistance(
+                    df_for_sr,
+                    filter_high=current_high,
+                    filter_low=current_low
+                )
                 print ("support_levels", support_levels)
                 print("resistance_levels", resistance_levels)
 

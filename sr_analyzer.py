@@ -61,13 +61,15 @@ class SRAnalyzer:
             
         return clusters
 
-    def find_levels(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
+    def find_levels(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Tuple[List[float], List[float]]:
         """
         Calcule et retourne les niveaux de support et résistance clusterisés.
         Les niveaux cassés (avec breakout_tolerance) sont invalidés.
 
         Args:
             df (pd.DataFrame): DataFrame contenant les colonnes 'High' et 'Low'.
+            filter_high (float, optional): High de la bougie à utiliser pour filtrage. Par défaut: dernière bougie du df.
+            filter_low (float, optional): Low de la bougie à utiliser pour filtrage. Par défaut: dernière bougie du df.
 
         Returns:
             Tuple[List[float], List[float]]: (niveaux de support, niveaux de résistance)
@@ -90,9 +92,9 @@ class SRAnalyzer:
         support_clusters = self._cluster_levels(support_levels)
         resistance_clusters = self._cluster_levels(resistance_levels)
 
-        # 3. Filtrer les niveaux cassés basés sur la dernière bougie
-        last_high = df['High'].iloc[-1]
-        last_low = df['Low'].iloc[-1]
+        # 3. Filtrer les niveaux cassés basés sur la bougie spécifiée (ou dernière bougie)
+        last_high = filter_high if filter_high is not None else df['High'].iloc[-1]
+        last_low = filter_low if filter_low is not None else df['Low'].iloc[-1]
 
         # Invalider résistances cassées : prix a dépassé résistance + tolérance
         valid_resistances = [
