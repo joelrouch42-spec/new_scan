@@ -204,27 +204,38 @@ class StockScanner:
             
             # Liste pour stocker les patterns détectés (pour le graphique)
             detected_patterns = []
-            
+
             print("total_candles_needed", total_candles_needed)
             print("total_candles", total_candles)
             print("test_stop", test_stop)
-            
-            idx = 0
-            for candle_nb in range(test_stop, test_start - 1, -1):   # 10.9.8. ... 1
-                sr_calc_pos = total_candles - candle_nb
 
-                if sr_calc_pos >= total_candles:
+            # CALCULER LES S/R UNE SEULE FOIS avant la boucle
+            sr_calc_pos = total_candles - test_stop
+            if sr_calc_pos <= 0:
+                continue
+
+            df_for_sr = df.iloc[:sr_calc_pos].copy()
+
+            # Calcul des S/R (sans filtrage)
+            sr_result_base = self.find_support_resistance(df_for_sr)
+
+            print(f"\nS/R calculés sur {len(df_for_sr)} bougies (jusqu'à position {sr_calc_pos})")
+            print(f"Supports de base: {sr_result_base['valid']['supports']}")
+            print(f"Résistances de base: {sr_result_base['valid']['resistances']}\n")
+
+            # Boucle de test: de test_stop à test_start
+            for candle_nb in range(test_stop, test_start - 1, -1):   # 10.9.8. ... 1
+                current_pos = total_candles - candle_nb
+
+                if current_pos >= total_candles:
                     break
 
-                df_for_sr = df.iloc[idx:sr_calc_pos].copy()
-                idx = idx + 1
-
                 # Récupérer le MAX high et MIN low de TOUTES les bougies
-                # depuis le calcul S/R jusqu'à la fin du dataset
-                max_high = df['High'].iloc[sr_calc_pos:].max()
-                min_low = df['Low'].iloc[sr_calc_pos:].min()
+                # depuis le calcul S/R (sr_calc_pos) jusqu'à la position actuelle (current_pos)
+                max_high = df['High'].iloc[sr_calc_pos:current_pos+1].max()
+                min_low = df['Low'].iloc[sr_calc_pos:current_pos+1].min()
 
-                # Calcul S/R avec filtrage basé sur le max/min depuis le calcul
+                # Filtrer les S/R basés sur le max/min depuis le calcul
                 sr_result = self.find_support_resistance(
                     df_for_sr,
                     filter_high=max_high,
@@ -237,10 +248,11 @@ class StockScanner:
                 broken_supports = sr_result['broken']['supports']
                 broken_resistances = sr_result['broken']['resistances']
 
-                print("Valid supports:", valid_supports)
-                print("Valid resistances:", valid_resistances)
-                print("Broken supports:", broken_supports)
-                print("Broken resistances:", broken_resistances)
+                print(f"Bougie {candle_nb} (position {current_pos}): max_high={max_high:.2f}, min_low={min_low:.2f}")
+                print("  Valid supports:", valid_supports)
+                print("  Valid resistances:", valid_resistances)
+                print("  Broken supports:", broken_supports)
+                print("  Broken resistances:", broken_resistances)
 
         
     def run(self):
