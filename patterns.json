@@ -29,8 +29,9 @@
     "order": 5,
     "cluster_threshold": 0.02,
     "flip_tolerance": 0.01,
-    "min_touches": 2,
+    "min_touches": 1,
     "patterns_folder": "patterns",
+	"breakout_tolerance": 0.005, 
     "description": "order: nombre de bougies de chaque côté pour détecter un extremum local. cluster_threshold: seuil de regroupement des niveaux proches (2%). flip_tolerance: tolérance pour détecter qu'on touche un niveau (1%). min_touches: nombre minimum de fois qu'un niveau doit être testé pour être valide"
   },
   "engulfing": {
