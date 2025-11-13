@@ -64,17 +64,18 @@ class SRAnalyzer:
     def find_levels(self, df: pd.DataFrame) -> Tuple[List[float], List[float]]:
         """
         Calcule et retourne les niveaux de support et résistance clusterisés.
-        
+        Les niveaux cassés (avec breakout_tolerance) sont invalidés.
+
         Args:
             df (pd.DataFrame): DataFrame contenant les colonnes 'High' et 'Low'.
-        
+
         Returns:
             Tuple[List[float], List[float]]: (niveaux de support, niveaux de résistance)
         """
         highs = df['High'].values
         lows = df['Low'].values
         n = len(df)
-        
+
         # Ajuster 'order' avant de calculer les extrema
         adjusted_order = self._adjust_order(n)
 
@@ -89,6 +90,21 @@ class SRAnalyzer:
         support_clusters = self._cluster_levels(support_levels)
         resistance_clusters = self._cluster_levels(resistance_levels)
 
-        return support_clusters, resistance_clusters
+        # 3. Filtrer les niveaux cassés basés sur la dernière bougie
+        last_high = df['High'].iloc[-1]
+        last_low = df['Low'].iloc[-1]
 
+        # Invalider résistances cassées : prix a dépassé résistance + tolérance
+        valid_resistances = [
+            r for r in resistance_clusters
+            if last_high <= r * (1 + self.breakout_tolerance)
+        ]
+
+        # Invalider supports cassés : prix est descendu sous support - tolérance
+        valid_supports = [
+            s for s in support_clusters
+            if last_low >= s * (1 - self.breakout_tolerance)
+        ]
+
+        return valid_supports, valid_resistances
 # --- Fin du fichier sr_analyzer.py ---
