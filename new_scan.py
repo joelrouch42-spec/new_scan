@@ -150,7 +150,7 @@ class StockScanner:
         except Exception as e:
             return nono
             
-    def find_support_resistance(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Tuple[List[float], List[float]]:
+    def find_support_resistance(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Dict:
         return self.sr_analyzer.find_levels(df, filter_high, filter_low)
 
         
@@ -224,13 +224,22 @@ class StockScanner:
                 current_low = df['Low'].iloc[sr_calc_pos]
 
                 # Calcul S/R avec filtrage basé sur la bougie actuelle
-                support_levels, resistance_levels = self.find_support_resistance(
+                sr_result = self.find_support_resistance(
                     df_for_sr,
                     filter_high=current_high,
                     filter_low=current_low
                 )
-                print ("support_levels", support_levels)
-                print("resistance_levels", resistance_levels)
+
+                # Extraire les niveaux valides et cassés
+                valid_supports = sr_result['valid']['supports']
+                valid_resistances = sr_result['valid']['resistances']
+                broken_supports = sr_result['broken']['supports']
+                broken_resistances = sr_result['broken']['resistances']
+
+                print("Valid supports:", valid_supports)
+                print("Valid resistances:", valid_resistances)
+                print("Broken supports:", broken_supports)
+                print("Broken resistances:", broken_resistances)
 
         
     def run(self):

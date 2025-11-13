@@ -61,10 +61,10 @@ class SRAnalyzer:
             
         return clusters
 
-    def find_levels(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Tuple[List[float], List[float]]:
+    def find_levels(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Dict[str, Dict[str, List[float]]]:
         """
         Calcule et retourne les niveaux de support et résistance clusterisés.
-        Les niveaux cassés (avec breakout_tolerance) sont invalidés.
+        Sépare les niveaux valides (non cassés) et cassés.
 
         Args:
             df (pd.DataFrame): DataFrame contenant les colonnes 'High' et 'Low'.
@@ -72,7 +72,11 @@ class SRAnalyzer:
             filter_low (float, optional): Low de la bougie à utiliser pour filtrage. Par défaut: dernière bougie du df.
 
         Returns:
-            Tuple[List[float], List[float]]: (niveaux de support, niveaux de résistance)
+            Dict avec structure:
+            {
+                'valid': {'supports': List[float], 'resistances': List[float]},
+                'broken': {'supports': List[float], 'resistances': List[float]}
+            }
         """
         highs = df['High'].values
         lows = df['Low'].values
@@ -92,21 +96,36 @@ class SRAnalyzer:
         support_clusters = self._cluster_levels(support_levels)
         resistance_clusters = self._cluster_levels(resistance_levels)
 
-        # 3. Filtrer les niveaux cassés basés sur la bougie spécifiée (ou dernière bougie)
+        # 3. Séparer les niveaux valides et cassés basés sur la bougie spécifiée (ou dernière bougie)
         last_high = filter_high if filter_high is not None else df['High'].iloc[-1]
         last_low = filter_low if filter_low is not None else df['Low'].iloc[-1]
 
-        # Invalider résistances cassées : prix a dépassé résistance + tolérance
-        valid_resistances = [
-            r for r in resistance_clusters
-            if last_high <= r * (1 + self.breakout_tolerance)
-        ]
+        # Séparer résistances valides et cassées
+        valid_resistances = []
+        broken_resistances = []
+        for r in resistance_clusters:
+            if last_high <= r * (1 + self.breakout_tolerance):
+                valid_resistances.append(r)
+            else:
+                broken_resistances.append(r)
 
-        # Invalider supports cassés : prix est descendu sous support - tolérance
-        valid_supports = [
-            s for s in support_clusters
-            if last_low >= s * (1 - self.breakout_tolerance)
-        ]
+        # Séparer supports valides et cassés
+        valid_supports = []
+        broken_supports = []
+        for s in support_clusters:
+            if last_low >= s * (1 - self.breakout_tolerance):
+                valid_supports.append(s)
+            else:
+                broken_supports.append(s)
 
-        return valid_supports, valid_resistances
+        return {
+            'valid': {
+                'supports': valid_supports,
+                'resistances': valid_resistances
+            },
+            'broken': {
+                'supports': broken_supports,
+                'resistances': broken_resistances
+            }
+        }
 # --- Fin du fichier sr_analyzer.py ---
