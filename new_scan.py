@@ -219,15 +219,16 @@ class StockScanner:
                 df_for_sr = df.iloc[idx:sr_calc_pos].copy()
                 idx = idx + 1
 
-                # Récupérer high/low de la bougie actuelle testée pour le filtrage
-                current_high = df['High'].iloc[sr_calc_pos]
-                current_low = df['Low'].iloc[sr_calc_pos]
+                # Récupérer le MAX high et MIN low de TOUTES les bougies
+                # depuis le calcul S/R jusqu'à la fin du dataset
+                max_high = df['High'].iloc[sr_calc_pos:].max()
+                min_low = df['Low'].iloc[sr_calc_pos:].min()
 
-                # Calcul S/R avec filtrage basé sur la bougie actuelle
+                # Calcul S/R avec filtrage basé sur le max/min depuis le calcul
                 sr_result = self.find_support_resistance(
                     df_for_sr,
-                    filter_high=current_high,
-                    filter_low=current_low
+                    filter_high=max_high,
+                    filter_low=min_low
                 )
 
                 # Extraire les niveaux valides et cassés
