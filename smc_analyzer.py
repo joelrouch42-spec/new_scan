@@ -126,10 +126,10 @@ class SMCAnalyzer:
                     }
 
                     # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                    # Un OB bullish est cassé si le prix CLOSE EN DESSOUS de son low
                     is_valid = True
                     for j in range(i, len(df)):
-                        # Un OB bullish est cassé si le prix va EN DESSOUS de son low
-                        if df.iloc[j]['Low'] < ob['low']:
+                        if df.iloc[j]['Close'] < ob['low']:
                             is_valid = False
                             break
 
@@ -148,10 +148,10 @@ class SMCAnalyzer:
                     }
 
                     # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                    # Un OB bearish est cassé si le prix CLOSE AU DESSUS de son high
                     is_valid = True
                     for j in range(i, len(df)):
-                        # Un OB bearish est cassé si le prix va AU DESSUS de son high
-                        if df.iloc[j]['High'] > ob['high']:
+                        if df.iloc[j]['Close'] > ob['high']:
                             is_valid = False
                             break
 
