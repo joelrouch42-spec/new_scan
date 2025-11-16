@@ -140,6 +140,10 @@ class StockScanner:
 
     def generate_chart(self, symbol, df):
         """Génère un graphique HTML avec les Order Blocks"""
+        # Créer le dossier chart s'il n'existe pas
+        chart_folder = 'chart'
+        os.makedirs(chart_folder, exist_ok=True)
+
         # Analyse SMC
         smc_result = self.smc_analyzer.analyze(df)
         bullish_obs = smc_result['order_blocks']['bullish']
@@ -204,8 +208,8 @@ class StockScanner:
             xaxis_rangeslider_visible=False
         )
 
-        # Sauvegarder
-        filename = f'{symbol}_order_blocks.html'
+        # Sauvegarder dans le dossier chart
+        filename = os.path.join(chart_folder, f'{symbol}_order_blocks.html')
         fig.write_html(filename)
         print(f"Graphique: {filename}")
         print(f"Bullish OB (bleu): {len(bullish_obs)}")
