@@ -2,17 +2,15 @@
 import json
 import os
 from datetime import datetime, timedelta
-import yfinance as yf
 import pandas as pd
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
 import time
 import argparse
 import numpy as np
-from scipy.signal import argrelextrema
 from typing import List, Tuple, Optional, Dict
 import plotly.graph_objects as go
-from sr_analyzer import SRAnalyzer
+from smc_analyzer import SMCAnalyzer
 
 class StockScanner:
     def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None):
@@ -21,30 +19,30 @@ class StockScanner:
 
         with open(patterns_file, 'r') as f:
             self.patterns_config = json.load(f)
-            
-        sr_config = self.patterns_config['support_resistance']
-        self.sr_analyzer = SRAnalyzer(sr_config)
+
+        # Initialiser le SMC Analyzer
+        smc_config = self.patterns_config['smc']
+        self.smc_analyzer = SMCAnalyzer(smc_config)
 
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
 
         # Dossiers différents selon le mode
-        base_patterns_folder = self.patterns_config['support_resistance']['patterns_folder']
         if self.mode == 'backtest':
-            self.patterns_folder = f"{base_patterns_folder}_backtest"
+            self.patterns_folder = "patterns_backtest"
         else:
-            self.patterns_folder = f"{base_patterns_folder}_realtime"
+            self.patterns_folder = "patterns_realtime"
 
         self.chart_symbol = chart_symbol
-        
-        print("settings_file", settings_file);
+
+        print("settings_file", settings_file)
         print("is_backtest: ", is_backtest)
         print("mode: ", self.mode)
         print("folder: ", self.data_folder)
-        print("patterns_folder: ", self.patterns_folder);
-        
-        
+        print("patterns_folder: ", self.patterns_folder)
+
+
     def get_data_filename(self, symbol, candle_nb, interval, date):
         """Génère le nom du fichier de données"""
         return os.path.join(
@@ -55,7 +53,7 @@ class StockScanner:
     def check_file_exists(self, filepath):
         """Vérifie si le fichier existe"""
         return os.path.exists(filepath)
-        
+
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
         symbols = []
@@ -69,12 +67,11 @@ class StockScanner:
                         provider = parts[1]
                         symbols.append({'symbol': symbol, 'provider': provider})
         return symbols
-        
-        
+
+
     def download_ibkr_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis IBKR"""
         try:
-
             # Connexion IBKR
             realtime_config = self.settings['realtime']
             host = realtime_config['ibkr_host']
@@ -99,7 +96,7 @@ class StockScanner:
                 duration_str = f"{candle_nb} D"
                 bar_size = "1 day"
             elif interval == '1h':
-                duration_str = f"{candle_nb} S"  # S pour secondes (heures)
+                duration_str = f"{candle_nb} S"
                 bar_size = "1 hour"
             else:
                 duration_str = f"{candle_nb} D"
@@ -120,8 +117,7 @@ class StockScanner:
             ib.disconnect()
 
             if not bars or len(bars) < candle_nb:
-                # Fallback sur Yahoo si pas assez de données
-                return none
+                return None
 
             # Convertir en DataFrame avec conversion timezone EST
             data = []
@@ -132,7 +128,6 @@ class StockScanner:
                 if hasattr(bar.date, 'tzinfo') and bar.date.tzinfo is not None:
                     date_est = bar.date.astimezone(est_tz)
                 else:
-                    # Si pas de timezone, on assume que c'est déjà en EST
                     date_est = bar.date
 
                 data.append({
@@ -148,12 +143,10 @@ class StockScanner:
             return df
 
         except Exception as e:
-            return nono
-            
-    def find_support_resistance(self, df: pd.DataFrame, filter_high: float = None, filter_low: float = None) -> Dict:
-        return self.sr_analyzer.find_levels(df, filter_high, filter_low)
+            print(f"Erreur IBKR: {e}")
+            return None
 
-        
+
     def run_backtest(self):
         """Execute le mode backtest"""
         backtest_config = self.settings['backtest']
@@ -170,7 +163,7 @@ class StockScanner:
         os.makedirs(self.patterns_folder, exist_ok=True)
 
         watchlist = self.load_watchlist()
-        
+
         # Filtrer la watchlist si --chart est spécifié
         if self.chart_symbol:
             watchlist = [item for item in watchlist if item['symbol'].upper() == self.chart_symbol.upper()]
@@ -180,99 +173,90 @@ class StockScanner:
 
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
         print(today)
-        
+
         for item in watchlist:
             symbol = item['symbol']
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
-            print (filename)
+            print(filename)
 
             # Télécharge ou charge les données
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
             else:
-                # TEMPORAIRE: Utilise IBKR au lieu de Yahoo pour éviter les gaps
                 df = self.download_ibkr_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
                     continue
-            
+
             if df is None or len(df) == 0:
                 continue
 
             total_candles = len(df)
-            
-            # Liste pour stocker les patterns détectés (pour le graphique)
-            detected_patterns = []
 
-            print("total_candles_needed", total_candles_needed)
-            print("total_candles", total_candles)
-            print("test_stop", test_stop)
+            print(f"\n{'='*60}")
+            print(f"ANALYSE SMC pour {symbol}")
+            print(f"{'='*60}")
+            print(f"Total candles: {total_candles}")
+            print(f"Test range: candle {test_start} à {test_stop}")
 
-            # CALCULER LES S/R UNE SEULE FOIS avant la boucle
-            sr_calc_pos = total_candles - test_stop
-            if sr_calc_pos <= 0:
-                continue
+            # ANALYSE SMC sur l'ensemble du dataset
+            smc_result = self.smc_analyzer.analyze(df)
 
-            df_for_sr = df.iloc[:sr_calc_pos].copy()
+            # Afficher les résultats
+            print(f"\n--- ORDER BLOCKS ---")
+            print(f"Bullish OB: {len(smc_result['order_blocks']['bullish'])} détectés")
+            for ob in smc_result['order_blocks']['bullish'][-5:]:  # Derniers 5
+                print(f"  Position {ob['index']}: [{ob['low']:.2f} - {ob['high']:.2f}]")
 
-            # Calcul des S/R (sans filtrage)
-            sr_result_base = self.find_support_resistance(df_for_sr)
+            print(f"\nBearish OB: {len(smc_result['order_blocks']['bearish'])} détectés")
+            for ob in smc_result['order_blocks']['bearish'][-5:]:
+                print(f"  Position {ob['index']}: [{ob['low']:.2f} - {ob['high']:.2f}]")
 
-            print(f"\nS/R calculés sur {len(df_for_sr)} bougies (jusqu'à position {sr_calc_pos})")
-            print(f"Supports de base: {sr_result_base['valid']['supports']}")
-            print(f"Résistances de base: {sr_result_base['valid']['resistances']}\n")
+            print(f"\n--- FAIR VALUE GAPS ---")
+            print(f"Bullish FVG: {len(smc_result['fvg']['bullish'])} détectés")
+            for fvg in smc_result['fvg']['bullish'][-5:]:
+                print(f"  Position {fvg['index']}: [{fvg['low']:.2f} - {fvg['high']:.2f}]")
 
-            # Boucle de test: de test_stop à test_start
-            for candle_nb in range(test_stop, test_start - 1, -1):   # 10.9.8. ... 1
-                current_pos = total_candles - candle_nb
+            print(f"\nBearish FVG: {len(smc_result['fvg']['bearish'])} détectés")
+            for fvg in smc_result['fvg']['bearish'][-5:]:
+                print(f"  Position {fvg['index']}: [{fvg['low']:.2f} - {fvg['high']:.2f}]")
 
-                if current_pos >= total_candles:
-                    break
+            print(f"\n--- STRUCTURE ---")
+            print(f"BOS détectés: {len(smc_result['bos'])}")
+            for bos in smc_result['bos'][-5:]:
+                print(f"  Position {bos['index']}: {bos['type']} (prix: {bos['price']:.2f})")
 
-                # Récupérer le MAX high et MIN low de TOUTES les bougies
-                # depuis le calcul S/R (sr_calc_pos) jusqu'à la position actuelle (current_pos)
-                max_high = df['High'].iloc[sr_calc_pos:current_pos+1].max()
-                min_low = df['Low'].iloc[sr_calc_pos:current_pos+1].min()
+            print(f"\nCHoCH détectés: {len(smc_result['choch'])}")
+            for choch in smc_result['choch'][-5:]:
+                print(f"  Position {choch['index']}: {choch['type']} (prix: {choch['price']:.2f})")
 
-                # Filtrer les S/R basés sur le max/min depuis le calcul
-                sr_result = self.find_support_resistance(
-                    df_for_sr,
-                    filter_high=max_high,
-                    filter_low=min_low
-                )
+            print(f"\n--- LIQUIDITY LEVELS ---")
+            if smc_result['liquidity']['weak_highs']:
+                print(f"Weak Highs: {smc_result['liquidity']['weak_highs'][:5]}")
+            if smc_result['liquidity']['weak_lows']:
+                print(f"Weak Lows: {smc_result['liquidity']['weak_lows'][:5]}")
+            if smc_result['liquidity']['strong_highs']:
+                print(f"Strong Highs: {smc_result['liquidity']['strong_highs'][:5]}")
+            if smc_result['liquidity']['strong_lows']:
+                print(f"Strong Lows: {smc_result['liquidity']['strong_lows'][:5]}")
 
-                # Extraire les niveaux valides et cassés
-                valid_supports = sr_result['valid']['supports']
-                valid_resistances = sr_result['valid']['resistances']
-                broken_supports = sr_result['broken']['supports']
-                broken_resistances = sr_result['broken']['resistances']
 
-                print(f"Bougie {candle_nb} (position {current_pos}): max_high={max_high:.2f}, min_low={min_low:.2f}")
-                print("  Valid supports:", valid_supports)
-                print("  Valid resistances:", valid_resistances)
-                print("  Broken supports:", broken_supports)
-                print("  Broken resistances:", broken_resistances)
-
-        
     def run(self):
         """Point d'entrée principal"""
         if self.mode == 'backtest':
             self.run_backtest()
         elif self.mode == 'realtime':
-            self.run_realtime()
+            print("Mode realtime pas encore implémenté")
         else:
             print(f"Mode inconnu: {self.mode}")
- 
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Scanner de stocks')
+    parser = argparse.ArgumentParser(description='Scanner de stocks avec Smart Money Concepts')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique HTML pour le symbole spécifié (ex: --chart AAPL)')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)   
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
     scanner.run()
-    
-    
-    
