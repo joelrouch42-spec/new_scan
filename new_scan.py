@@ -253,14 +253,11 @@ class StockScanner:
         os.makedirs(self.data_folder, exist_ok=True)
         os.makedirs(self.patterns_folder, exist_ok=True)
 
-        watchlist = self.load_watchlist()
-
-        # Filtrer la watchlist si --chart est spécifié
+        # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
-            watchlist = [item for item in watchlist if item['symbol'].upper() == self.chart_symbol.upper()]
-            if not watchlist:
-                print(f"Erreur: Symbole {self.chart_symbol} non trouvé")
-                return
+            watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
+        else:
+            watchlist = self.load_watchlist()
 
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
