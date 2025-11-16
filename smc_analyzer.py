@@ -425,3 +425,166 @@ class SMCAnalyzer:
             'current_price': current_price,
             'current_zone': current_zone
         }
+
+
+    def detect_setups(self, df: pd.DataFrame, smc_result: Dict) -> List[Dict]:
+        """
+        Détecte les setups de trading valides basés sur les concepts SMC
+
+        Args:
+            df: DataFrame des prix
+            smc_result: Résultat de analyze()
+
+        Returns:
+            List d'alertes de trading avec type, raison, entry, stop, target
+        """
+        alerts = []
+
+        if len(df) < 10:
+            return alerts
+
+        current_price = df.iloc[-1]['Close']
+        current_idx = len(df) - 1
+
+        # Configuration des alertes
+        alert_config = self.config.get('alerts', {})
+        proximity_percent = alert_config.get('proximity_percent', 0.02)  # 2%
+        recent_lookback = alert_config.get('recent_lookback', 20)  # 20 bougies
+
+        # Récupérer les éléments SMC
+        bullish_obs = smc_result['order_blocks']['bullish']
+        bearish_obs = smc_result['order_blocks']['bearish']
+        bullish_fvgs = smc_result['fvg']['bullish']
+        bearish_fvgs = smc_result['fvg']['bearish']
+        bos_list = smc_result['bos']
+        choch_list = smc_result['choch']
+        pd_zones = smc_result['premium_discount']
+
+        # Fonction helper: est-ce que le prix est proche d'une zone?
+        def is_near_zone(price, zone_low, zone_high, tolerance=proximity_percent):
+            """Vérifie si le prix est dans ou près d'une zone"""
+            zone_mid = (zone_low + zone_high) / 2
+            zone_range = zone_high - zone_low
+            extended_low = zone_low - (zone_mid * tolerance)
+            extended_high = zone_high + (zone_mid * tolerance)
+            return extended_low <= price <= extended_high
+
+        # Fonction helper: trouver le dernier BOS/CHoCH récent
+        def get_recent_structure(structure_list, lookback):
+            """Retourne les structures dans les N dernières bougies"""
+            cutoff_idx = current_idx - lookback
+            return [s for s in structure_list if s['index'] >= cutoff_idx]
+
+        # Tendance actuelle basée sur les BOS récents
+        recent_bos = get_recent_structure(bos_list, recent_lookback)
+        recent_choch = get_recent_structure(choch_list, recent_lookback)
+
+        bullish_trend = any(b['type'] == 'bullish' for b in recent_bos[-3:]) if recent_bos else False
+        bearish_trend = any(b['type'] == 'bearish' for b in recent_bos[-3:]) if recent_bos else False
+
+        # === ALERT LONG ===
+        # Conditions: Bullish OB/FVG + Tendance haussière + Zone discount
+        if pd_zones.get('current_zone') == 'discount' and bullish_trend:
+            # Chercher OB bullish proche
+            for ob in bullish_obs[-10:]:  # Derniers 10 OB
+                if is_near_zone(current_price, ob['low'], ob['high']):
+                    alerts.append({
+                        'type': 'LONG',
+                        'reason': f"Prix dans Bullish OB [{ob['low']:.2f}-{ob['high']:.2f}] + Tendance UP + Zone Discount",
+                        'entry': current_price,
+                        'stop': ob['low'] - (ob['high'] - ob['low']) * 0.1,  # 10% sous l'OB
+                        'target': pd_zones['premium'],  # Objectif = zone premium
+                        'zone': 'order_block',
+                        'zone_index': ob['index']
+                    })
+                    break  # Une seule alerte par type
+
+            # Chercher FVG bullish proche
+            if not alerts:  # Si pas d'OB, chercher FVG
+                for fvg in bullish_fvgs[-10:]:
+                    if is_near_zone(current_price, fvg['low'], fvg['high']):
+                        alerts.append({
+                            'type': 'LONG',
+                            'reason': f"Prix dans Bullish FVG [{fvg['low']:.2f}-{fvg['high']:.2f}] + Tendance UP + Zone Discount",
+                            'entry': current_price,
+                            'stop': fvg['low'] - (fvg['high'] - fvg['low']) * 0.1,
+                            'target': pd_zones['premium'],
+                            'zone': 'fvg',
+                            'zone_index': fvg['index']
+                        })
+                        break
+
+        # === ALERT SHORT ===
+        # Conditions: Bearish OB/FVG + Tendance baissière + Zone premium
+        if pd_zones.get('current_zone') == 'premium' and bearish_trend:
+            # Chercher OB bearish proche
+            for ob in bearish_obs[-10:]:
+                if is_near_zone(current_price, ob['low'], ob['high']):
+                    alerts.append({
+                        'type': 'SHORT',
+                        'reason': f"Prix dans Bearish OB [{ob['low']:.2f}-{ob['high']:.2f}] + Tendance DOWN + Zone Premium",
+                        'entry': current_price,
+                        'stop': ob['high'] + (ob['high'] - ob['low']) * 0.1,  # 10% au-dessus de l'OB
+                        'target': pd_zones['discount'],  # Objectif = zone discount
+                        'zone': 'order_block',
+                        'zone_index': ob['index']
+                    })
+                    break
+
+            # Chercher FVG bearish proche
+            if not any(a['type'] == 'SHORT' for a in alerts):
+                for fvg in bearish_fvgs[-10:]:
+                    if is_near_zone(current_price, fvg['low'], fvg['high']):
+                        alerts.append({
+                            'type': 'SHORT',
+                            'reason': f"Prix dans Bearish FVG [{fvg['low']:.2f}-{fvg['high']:.2f}] + Tendance DOWN + Zone Premium",
+                            'entry': current_price,
+                            'stop': fvg['high'] + (fvg['high'] - fvg['low']) * 0.1,
+                            'target': pd_zones['discount'],
+                            'zone': 'fvg',
+                            'zone_index': fvg['index']
+                        })
+                        break
+
+        # === ALERT REVERSAL ===
+        # CHoCH récent + prix dans OB/FVG opposé
+        if recent_choch:
+            last_choch = recent_choch[-1]
+
+            # CHoCH bullish (retournement à la hausse)
+            if last_choch['type'] == 'bullish':
+                for ob in bullish_obs[-5:]:
+                    if is_near_zone(current_price, ob['low'], ob['high']):
+                        alerts.append({
+                            'type': 'REVERSAL_LONG',
+                            'reason': f"CHoCH Bullish détecté + Prix dans Bullish OB [{ob['low']:.2f}-{ob['high']:.2f}]",
+                            'entry': current_price,
+                            'stop': ob['low'] - (ob['high'] - ob['low']) * 0.15,
+                            'target': pd_zones['equilibrium'],
+                            'zone': 'order_block',
+                            'zone_index': ob['index']
+                        })
+                        break
+
+            # CHoCH bearish (retournement à la baisse)
+            elif last_choch['type'] == 'bearish':
+                for ob in bearish_obs[-5:]:
+                    if is_near_zone(current_price, ob['low'], ob['high']):
+                        alerts.append({
+                            'type': 'REVERSAL_SHORT',
+                            'reason': f"CHoCH Bearish détecté + Prix dans Bearish OB [{ob['low']:.2f}-{ob['high']:.2f}]",
+                            'entry': current_price,
+                            'stop': ob['high'] + (ob['high'] - ob['low']) * 0.15,
+                            'target': pd_zones['equilibrium'],
+                            'zone': 'order_block',
+                            'zone_index': ob['index']
+                        })
+                        break
+
+        # Calculer Risk/Reward pour chaque alerte
+        for alert in alerts:
+            risk = abs(alert['entry'] - alert['stop'])
+            reward = abs(alert['target'] - alert['entry'])
+            alert['risk_reward'] = round(reward / risk, 2) if risk > 0 else 0
+
+        return alerts

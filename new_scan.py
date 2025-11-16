@@ -203,43 +203,49 @@ class StockScanner:
             # ANALYSE SMC sur l'ensemble du dataset
             smc_result = self.smc_analyzer.analyze(df)
 
-            # Afficher les résultats
-            print(f"\n--- ORDER BLOCKS ---")
-            print(f"Bullish OB: {len(smc_result['order_blocks']['bullish'])} détectés")
-            for ob in smc_result['order_blocks']['bullish'][-5:]:  # Derniers 5
-                print(f"  Position {ob['index']}: [{ob['low']:.2f} - {ob['high']:.2f}]")
+            # DETECTION DES ALERTES DE TRADING
+            alerts = self.smc_analyzer.detect_setups(df, smc_result)
 
-            print(f"\nBearish OB: {len(smc_result['order_blocks']['bearish'])} détectés")
-            for ob in smc_result['order_blocks']['bearish'][-5:]:
-                print(f"  Position {ob['index']}: [{ob['low']:.2f} - {ob['high']:.2f}]")
+            # AFFICHAGE DES ALERTES
+            print(f"\n{'*'*60}")
+            print(f"   ALERTES DE TRADING")
+            print(f"{'*'*60}")
 
-            print(f"\n--- FAIR VALUE GAPS ---")
-            print(f"Bullish FVG: {len(smc_result['fvg']['bullish'])} détectés")
-            for fvg in smc_result['fvg']['bullish'][-5:]:
-                print(f"  Position {fvg['index']}: [{fvg['low']:.2f} - {fvg['high']:.2f}]")
+            if alerts:
+                for i, alert in enumerate(alerts, 1):
+                    print(f"\n🔔 ALERTE #{i}: {alert['type']}")
+                    print(f"   Raison: {alert['reason']}")
+                    print(f"   Entry: ${alert['entry']:.2f}")
+                    print(f"   Stop Loss: ${alert['stop']:.2f}")
+                    print(f"   Target: ${alert['target']:.2f}")
+                    print(f"   Risk/Reward: 1:{alert['risk_reward']}")
+            else:
+                print("\nAucune alerte détectée pour le moment.")
 
-            print(f"\nBearish FVG: {len(smc_result['fvg']['bearish'])} détectés")
-            for fvg in smc_result['fvg']['bearish'][-5:]:
-                print(f"  Position {fvg['index']}: [{fvg['low']:.2f} - {fvg['high']:.2f}]")
+            # Prix actuel et zones
+            pd_zones = smc_result['premium_discount']
+            print(f"\n--- PRIX ACTUEL ---")
+            print(f"Prix: ${pd_zones['current_price']:.2f}")
+            print(f"Zone: {pd_zones['current_zone'].upper()}")
+            print(f"  Range Low: ${pd_zones['range_low']:.2f}")
+            print(f"  Discount: ${pd_zones['discount']:.2f}")
+            print(f"  Equilibrium: ${pd_zones['equilibrium']:.2f}")
+            print(f"  Premium: ${pd_zones['premium']:.2f}")
+            print(f"  Range High: ${pd_zones['range_high']:.2f}")
 
-            print(f"\n--- STRUCTURE ---")
-            print(f"BOS détectés: {len(smc_result['bos'])}")
-            for bos in smc_result['bos'][-5:]:
-                print(f"  Position {bos['index']}: {bos['type']} (prix: {bos['price']:.2f})")
+            # Afficher les résultats SMC (résumé)
+            print(f"\n--- RÉSUMÉ SMC ---")
+            print(f"Order Blocks: {len(smc_result['order_blocks']['bullish'])} bullish, {len(smc_result['order_blocks']['bearish'])} bearish")
+            print(f"Fair Value Gaps: {len(smc_result['fvg']['bullish'])} bullish, {len(smc_result['fvg']['bearish'])} bearish")
+            print(f"Break of Structure: {len(smc_result['bos'])} détectés")
+            print(f"Change of Character: {len(smc_result['choch'])} détectés")
 
-            print(f"\nCHoCH détectés: {len(smc_result['choch'])}")
-            for choch in smc_result['choch'][-5:]:
-                print(f"  Position {choch['index']}: {choch['type']} (prix: {choch['price']:.2f})")
-
-            print(f"\n--- LIQUIDITY LEVELS ---")
-            if smc_result['liquidity']['weak_highs']:
-                print(f"Weak Highs: {smc_result['liquidity']['weak_highs'][:5]}")
-            if smc_result['liquidity']['weak_lows']:
-                print(f"Weak Lows: {smc_result['liquidity']['weak_lows'][:5]}")
             if smc_result['liquidity']['strong_highs']:
-                print(f"Strong Highs: {smc_result['liquidity']['strong_highs'][:5]}")
+                strong_highs = [f"${h['price']:.2f}" for h in smc_result['liquidity']['strong_highs'][:3]]
+                print(f"Strong Highs: {strong_highs}")
             if smc_result['liquidity']['strong_lows']:
-                print(f"Strong Lows: {smc_result['liquidity']['strong_lows'][:5]}")
+                strong_lows = [f"${l['price']:.2f}" for l in smc_result['liquidity']['strong_lows'][:3]]
+                print(f"Strong Lows: {strong_lows}")
 
 
     def run(self):
