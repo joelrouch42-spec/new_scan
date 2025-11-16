@@ -8,6 +8,10 @@ from ib_insync import IB, Stock
 import argparse
 import plotly.graph_objects as go
 from smc_analyzer import SMCAnalyzer
+import logging
+
+# Désactiver les logs ib_insync
+logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
 
 class StockScanner:
     def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None):
@@ -44,6 +48,22 @@ class StockScanner:
     def check_file_exists(self, filepath):
         """Vérifie si le fichier existe"""
         return os.path.exists(filepath)
+
+    def get_nasdaq100_symbols(self):
+        """Retourne la liste des symboles NASDAQ 100"""
+        symbols = [
+            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',
+            'NFLX', 'AMD', 'PEP', 'ADBE', 'CSCO', 'TMUS', 'CMCSA', 'INTC', 'TXN', 'QCOM',
+            'INTU', 'AMGN', 'HON', 'AMAT', 'SBUX', 'ISRG', 'BKNG', 'VRTX', 'GILD', 'ADI',
+            'ADP', 'MDLZ', 'REGN', 'PANW', 'LRCX', 'MU', 'PYPL', 'KLAC', 'SNPS', 'CDNS',
+            'MELI', 'ASML', 'MAR', 'ABNB', 'CRWD', 'CSX', 'MRVL', 'FTNT', 'ORLY', 'MNST',
+            'NXPI', 'ADSK', 'DASH', 'WDAY', 'ROP', 'CHTR', 'PCAR', 'AEP', 'CPRT', 'ROST',
+            'PAYX', 'KDP', 'FAST', 'ODFL', 'BKR', 'EA', 'CTSH', 'VRSK', 'DXCM', 'AZN',
+            'KHC', 'GEHC', 'LULU', 'IDXX', 'EXC', 'CSGP', 'XEL', 'ON', 'TTWO', 'ANSS',
+            'FANG', 'BIIB', 'ZS', 'DDOG', 'CDW', 'GFS', 'ILMN', 'WBD', 'MRNA', 'MDB',
+            'TEAM', 'ALGN', 'CTAS', 'DLTR', 'SMCI', 'ARM', 'COIN', 'APP', 'HOOD', 'RIVN'
+        ]
+        return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
@@ -134,7 +154,7 @@ class StockScanner:
             return df
 
         except Exception as e:
-            print(f"Erreur IBKR: {e}")
+            # Silencieux pour les erreurs IBKR (connexion refusée, etc.)
             return None
 
 
@@ -266,7 +286,7 @@ class StockScanner:
 
 
     def run_realtime(self):
-        """Execute le mode realtime avec alertes"""
+        """Execute le mode realtime avec alertes sur NASDAQ 100"""
         realtime_config = self.settings['realtime']
         candle_nb = realtime_config['candle_nb']
         interval = realtime_config['interval']
@@ -275,7 +295,8 @@ class StockScanner:
         os.makedirs(self.data_folder, exist_ok=True)
         os.makedirs(self.patterns_folder, exist_ok=True)
 
-        watchlist = self.load_watchlist()
+        # Scanne NASDAQ 100
+        watchlist = self.get_nasdaq100_symbols()
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
         for item in watchlist:
