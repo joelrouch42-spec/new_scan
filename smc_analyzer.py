@@ -81,11 +81,12 @@ class SMCAnalyzer:
     def _detect_order_blocks(self, df: pd.DataFrame) -> Dict:
         """
         Détecte les Order Blocks (bullish et bearish)
+        ET les invalide s'ils ont été cassés par le prix
 
         Order Block = dernière bougie opposée avant une forte impulsion
 
         Returns:
-            Dict avec 'bullish' et 'bearish' order blocks
+            Dict avec 'bullish' et 'bearish' order blocks VALIDES uniquement
         """
         impulse_threshold = self.ob_config.get('impulse_threshold', 2.0)
         min_body_percent = self.ob_config.get('min_body_percent', 0.3)
@@ -116,24 +117,46 @@ class SMCAnalyzer:
             # Bullish Order Block: bougie i-1 baissière + bougie i haussière forte
             if df.iloc[i]['Close'] > df.iloc[i]['Open']:  # Bougie i haussière
                 if df.iloc[i-1]['Close'] < df.iloc[i-1]['Open']:  # Bougie i-1 baissière
-                    bullish_obs.append({
+                    ob = {
                         'index': i-1,
                         'low': df.iloc[i-1]['Low'],
                         'high': df.iloc[i-1]['High'],
                         'open': df.iloc[i-1]['Open'],
                         'close': df.iloc[i-1]['Close']
-                    })
+                    }
+
+                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                    is_valid = True
+                    for j in range(i, len(df)):
+                        # Un OB bullish est cassé si le prix va EN DESSOUS de son low
+                        if df.iloc[j]['Low'] < ob['low']:
+                            is_valid = False
+                            break
+
+                    if is_valid:
+                        bullish_obs.append(ob)
 
             # Bearish Order Block: bougie i-1 haussière + bougie i baissière forte
             elif df.iloc[i]['Close'] < df.iloc[i]['Open']:  # Bougie i baissière
                 if df.iloc[i-1]['Close'] > df.iloc[i-1]['Open']:  # Bougie i-1 haussière
-                    bearish_obs.append({
+                    ob = {
                         'index': i-1,
                         'low': df.iloc[i-1]['Low'],
                         'high': df.iloc[i-1]['High'],
                         'open': df.iloc[i-1]['Open'],
                         'close': df.iloc[i-1]['Close']
-                    })
+                    }
+
+                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                    is_valid = True
+                    for j in range(i, len(df)):
+                        # Un OB bearish est cassé si le prix va AU DESSUS de son high
+                        if df.iloc[j]['High'] > ob['high']:
+                            is_valid = False
+                            break
+
+                    if is_valid:
+                        bearish_obs.append(ob)
 
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
 
