@@ -2,9 +2,10 @@
   "smc": {
     "order_blocks": {
       "enabled": true,
-      "impulse_threshold": 1.0,
-      "min_body_percent": 0.15,
-      "description": "impulse_threshold: ratio du body de la bougie d'impulsion vs moyenne (1.0 = 1.0x la moyenne). min_body_percent: body minimum en % du range total (0.15 = 15%)"
+      "impulse_threshold": 1.5,
+      "min_body_percent": 0.3,
+      "min_volume_ratio": 1.2,
+      "description": "impulse_threshold: ratio du body de la bougie d'impulsion vs moyenne (1.5 = 1.5x la moyenne). min_body_percent: body minimum en % du range total (0.3 = 30%). min_volume_ratio: volume de l'impulsion vs moyenne (1.2 = 1.2x la moyenne)"
     }
   }
 }
