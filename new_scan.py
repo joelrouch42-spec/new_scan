@@ -265,12 +265,63 @@ class StockScanner:
             self.generate_chart(symbol, df)
 
 
+    def run_realtime(self):
+        """Execute le mode realtime avec alertes"""
+        realtime_config = self.settings['realtime']
+        candle_nb = realtime_config['candle_nb']
+        interval = realtime_config['interval']
+
+        # Créer les dossiers
+        os.makedirs(self.data_folder, exist_ok=True)
+        os.makedirs(self.patterns_folder, exist_ok=True)
+
+        watchlist = self.load_watchlist()
+        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+
+        for item in watchlist:
+            symbol = item['symbol']
+            filename = self.get_data_filename(symbol, candle_nb, interval, today)
+
+            # Télécharge ou charge les données
+            if self.check_file_exists(filename):
+                df = pd.read_csv(filename)
+            else:
+                df = self.download_ibkr_data(symbol, candle_nb, interval)
+                if df is not None:
+                    df.to_csv(filename, index=False)
+                else:
+                    continue
+
+            if df is None or len(df) == 0:
+                continue
+
+            # Analyse SMC
+            smc_result = self.smc_analyzer.analyze(df)
+            bullish_obs = smc_result['order_blocks']['bullish']
+            bearish_obs = smc_result['order_blocks']['bearish']
+
+            # Prix actuel
+            current_price = df.iloc[-1]['Close']
+
+            # Vérifier si le prix touche une zone bleue (Bullish OB)
+            for ob in bullish_obs:
+                if ob['low'] <= current_price <= ob['high']:
+                    print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                    break
+
+            # Vérifier si le prix touche une zone rouge (Bearish OB)
+            for ob in bearish_obs:
+                if ob['low'] <= current_price <= ob['high']:
+                    print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                    break
+
+
     def run(self):
         """Point d'entrée principal"""
         if self.mode == 'backtest':
             self.run_backtest()
         elif self.mode == 'realtime':
-            print("Mode realtime pas encore implémenté")
+            self.run_realtime()
         else:
             print(f"Mode inconnu: {self.mode}")
 

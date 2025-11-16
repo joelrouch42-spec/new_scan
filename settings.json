@@ -8,6 +8,8 @@
     "test_candle_stop": 10
   },
   "realtime": {
+    "candle_nb": 130,
+    "interval": "1d",
     "update_interval_seconds": 60,
     "ibkr_host": "127.0.0.1",
     "ibkr_port": 4001,
