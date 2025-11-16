@@ -82,6 +82,7 @@ class SRAnalyzer:
         resistance_idx = argrelextrema(highs, np.greater, order=adjusted_order)[0]
         support_idx = argrelextrema(lows, np.less, order=adjusted_order)[0]
 
+		# Si des résistances ont été trouvées → prend les valeurs
         resistance_levels = highs[resistance_idx] if resistance_idx.size else np.array([])
         support_levels = lows[support_idx] if support_idx.size else np.array([])
 

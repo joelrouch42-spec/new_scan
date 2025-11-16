@@ -121,13 +121,15 @@ class StockScanner:
 
             if not bars or len(bars) < candle_nb:
                 # Fallback sur Yahoo si pas assez de données
-                return none
+                return None
 
             # Convertir en DataFrame avec conversion timezone EST
             data = []
             est_tz = ZoneInfo('America/New_York')
 
             for bar in bars[-candle_nb:]:
+                print("candle_nb: ", candle_nb)
+                print("bar: ", bar)
                 # Convertir la date en EST si elle a une timezone, sinon assumer qu'elle est déjà en EST
                 if hasattr(bar.date, 'tzinfo') and bar.date.tzinfo is not None:
                     date_est = bar.date.astimezone(est_tz)
@@ -215,6 +217,7 @@ class StockScanner:
                 df_for_sr = df.iloc[idx:sr_calc_pos].copy()
                 idx = idx + 1
                 support_levels, resistance_levels = self.find_support_resistance(df_for_sr)
+                
                 print ("support_levels", support_levels)
                 print("resistance_levels", resistance_levels)
 
