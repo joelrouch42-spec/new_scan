@@ -148,7 +148,7 @@ class StockScanner:
 
 
     def run_backtest(self):
-        """Execute le mode backtest"""
+        """Execute le mode backtest avec simulation de trades"""
         backtest_config = self.settings['backtest']
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
@@ -195,57 +195,143 @@ class StockScanner:
             total_candles = len(df)
 
             print(f"\n{'='*60}")
-            print(f"ANALYSE SMC pour {symbol}")
+            print(f"BACKTEST SMC pour {symbol}")
             print(f"{'='*60}")
             print(f"Total candles: {total_candles}")
-            print(f"Test range: candle {test_start} à {test_stop}")
+            print(f"Période backtest: {candle_nb} bougies de training, {test_stop - test_start + 1} bougies de test")
 
-            # ANALYSE SMC sur l'ensemble du dataset
-            smc_result = self.smc_analyzer.analyze(df)
+            # SIMULATION DE TRADING
+            trades = []
+            active_trade = None
 
-            # DETECTION DES ALERTES DE TRADING
-            alerts = self.smc_analyzer.detect_setups(df, smc_result)
+            # Commencer à la bougie candle_nb (après training)
+            start_idx = candle_nb
+            end_idx = total_candles - test_start + 1
 
-            # AFFICHAGE DES ALERTES
+            for i in range(start_idx, end_idx):
+                # Données jusqu'à la bougie actuelle
+                df_current = df.iloc[:i].copy()
+                current_candle = df.iloc[i]
+
+                # Si on a un trade actif, vérifier stop/target
+                if active_trade:
+                    trade_type = active_trade['type']
+
+                    # Check LONG
+                    if 'LONG' in trade_type:
+                        # Stop hit
+                        if current_candle['Low'] <= active_trade['stop']:
+                            active_trade['exit_price'] = active_trade['stop']
+                            active_trade['exit_candle'] = i
+                            active_trade['result'] = 'LOSS'
+                            active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
+                            trades.append(active_trade)
+                            active_trade = None
+                        # Target hit
+                        elif current_candle['High'] >= active_trade['target']:
+                            active_trade['exit_price'] = active_trade['target']
+                            active_trade['exit_candle'] = i
+                            active_trade['result'] = 'WIN'
+                            active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
+                            trades.append(active_trade)
+                            active_trade = None
+
+                    # Check SHORT
+                    elif 'SHORT' in trade_type:
+                        # Stop hit
+                        if current_candle['High'] >= active_trade['stop']:
+                            active_trade['exit_price'] = active_trade['stop']
+                            active_trade['exit_candle'] = i
+                            active_trade['result'] = 'LOSS'
+                            active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
+                            trades.append(active_trade)
+                            active_trade = None
+                        # Target hit
+                        elif current_candle['Low'] <= active_trade['target']:
+                            active_trade['exit_price'] = active_trade['target']
+                            active_trade['exit_candle'] = i
+                            active_trade['result'] = 'WIN'
+                            active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
+                            trades.append(active_trade)
+                            active_trade = None
+
+                # Si pas de trade actif, chercher une alerte
+                if not active_trade:
+                    smc_result = self.smc_analyzer.analyze(df_current)
+                    alerts = self.smc_analyzer.detect_setups(df_current, smc_result)
+
+                    if alerts:
+                        # Prendre la première alerte
+                        alert = alerts[0]
+
+                        # Ouvrir le trade
+                        active_trade = {
+                            'type': alert['type'],
+                            'entry': alert['entry'],
+                            'stop': alert['stop'],
+                            'target': alert['target'],
+                            'entry_candle': i,
+                            'reason': alert['reason']
+                        }
+
+            # Clore le trade actif si encore ouvert à la fin
+            if active_trade:
+                last_candle = df.iloc[end_idx - 1]
+                active_trade['exit_price'] = last_candle['Close']
+                active_trade['exit_candle'] = end_idx - 1
+                active_trade['result'] = 'OPEN'
+                if 'LONG' in active_trade['type']:
+                    active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
+                else:
+                    active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
+                trades.append(active_trade)
+
+            # AFFICHER LES RÉSULTATS
             print(f"\n{'*'*60}")
-            print(f"   ALERTES DE TRADING")
+            print(f"   RÉSULTATS BACKTEST")
             print(f"{'*'*60}")
 
-            if alerts:
-                for i, alert in enumerate(alerts, 1):
-                    print(f"\n🔔 ALERTE #{i}: {alert['type']}")
-                    print(f"   Raison: {alert['reason']}")
-                    print(f"   Entry: ${alert['entry']:.2f}")
-                    print(f"   Stop Loss: ${alert['stop']:.2f}")
-                    print(f"   Target: ${alert['target']:.2f}")
-                    print(f"   Risk/Reward: 1:{alert['risk_reward']}")
-            else:
-                print("\nAucune alerte détectée pour le moment.")
+            if trades:
+                wins = [t for t in trades if t['result'] == 'WIN']
+                losses = [t for t in trades if t['result'] == 'LOSS']
+                total_trades = len(trades)
+                win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
 
-            # Prix actuel et zones
+                total_pnl = sum(t['pnl'] for t in trades)
+                avg_win = sum(t['pnl'] for t in wins) / len(wins) if wins else 0
+                avg_loss = sum(t['pnl'] for t in losses) / len(losses) if losses else 0
+
+                print(f"\nTotal Trades: {total_trades}")
+                print(f"Wins: {len(wins)} | Losses: {len(losses)}")
+                print(f"Win Rate: {win_rate:.1f}%")
+                print(f"Total P&L: ${total_pnl:.2f}")
+                print(f"Average Win: ${avg_win:.2f}")
+                print(f"Average Loss: ${avg_loss:.2f}")
+
+                if avg_loss != 0:
+                    profit_factor = abs(avg_win / avg_loss)
+                    print(f"Profit Factor: {profit_factor:.2f}")
+
+                print(f"\n--- DÉTAIL DES TRADES ---")
+                for i, trade in enumerate(trades, 1):
+                    print(f"\nTrade #{i}: {trade['type']} - {trade['result']}")
+                    print(f"  Entry: ${trade['entry']:.2f} (candle {trade['entry_candle']})")
+                    print(f"  Exit: ${trade['exit_price']:.2f} (candle {trade['exit_candle']})")
+                    print(f"  Stop: ${trade['stop']:.2f} | Target: ${trade['target']:.2f}")
+                    print(f"  P&L: ${trade['pnl']:.2f}")
+                    print(f"  Raison: {trade['reason']}")
+            else:
+                print("\nAucun trade exécuté pendant la période de backtest.")
+
+            # Analyse SMC actuelle (dernière bougie)
+            smc_result = self.smc_analyzer.analyze(df)
             pd_zones = smc_result['premium_discount']
-            print(f"\n--- PRIX ACTUEL ---")
+
+            print(f"\n--- SITUATION ACTUELLE ---")
             print(f"Prix: ${pd_zones['current_price']:.2f}")
             print(f"Zone: {pd_zones['current_zone'].upper()}")
-            print(f"  Range Low: ${pd_zones['range_low']:.2f}")
-            print(f"  Discount: ${pd_zones['discount']:.2f}")
-            print(f"  Equilibrium: ${pd_zones['equilibrium']:.2f}")
-            print(f"  Premium: ${pd_zones['premium']:.2f}")
-            print(f"  Range High: ${pd_zones['range_high']:.2f}")
-
-            # Afficher les résultats SMC (résumé)
-            print(f"\n--- RÉSUMÉ SMC ---")
             print(f"Order Blocks: {len(smc_result['order_blocks']['bullish'])} bullish, {len(smc_result['order_blocks']['bearish'])} bearish")
             print(f"Fair Value Gaps: {len(smc_result['fvg']['bullish'])} bullish, {len(smc_result['fvg']['bearish'])} bearish")
-            print(f"Break of Structure: {len(smc_result['bos'])} détectés")
-            print(f"Change of Character: {len(smc_result['choch'])} détectés")
-
-            if smc_result['liquidity']['strong_highs']:
-                strong_highs = [f"${h['price']:.2f}" for h in smc_result['liquidity']['strong_highs'][:3]]
-                print(f"Strong Highs: {strong_highs}")
-            if smc_result['liquidity']['strong_lows']:
-                strong_lows = [f"${l['price']:.2f}" for l in smc_result['liquidity']['strong_lows'][:3]]
-                print(f"Strong Lows: {strong_lows}")
 
 
     def run(self):
