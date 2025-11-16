@@ -147,6 +147,85 @@ class StockScanner:
             return None
 
 
+    def generate_chart(self, symbol, df):
+        """Génère un graphique HTML avec les Order Blocks"""
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        # Analyse SMC
+        smc_result = self.smc_analyzer.analyze(df)
+        bullish_obs = smc_result['order_blocks']['bullish']
+        bearish_obs = smc_result['order_blocks']['bearish']
+
+        # Créer le graphique de chandelles
+        fig = go.Figure()
+
+        # Ajouter les chandelles
+        fig.add_trace(go.Candlestick(
+            x=df['Date'] if 'Date' in df.columns else list(range(len(df))),
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name='Price'
+        ))
+
+        # Ajouter les zones BLEUES (Bullish Order Blocks)
+        for ob in bullish_obs:
+            idx = ob['index']
+            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+
+            # Zone rectangulaire qui s'étend jusqu'à la fin
+            fig.add_shape(
+                type="rect",
+                x0=date,
+                x1=df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1,
+                y0=ob['low'],
+                y1=ob['high'],
+                fillcolor="blue",
+                opacity=0.2,
+                layer="below",
+                line_width=0,
+            )
+
+        # Ajouter les zones ROUGES (Bearish Order Blocks)
+        for ob in bearish_obs:
+            idx = ob['index']
+            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+
+            # Zone rectangulaire qui s'étend jusqu'à la fin
+            fig.add_shape(
+                type="rect",
+                x0=date,
+                x1=df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1,
+                y0=ob['low'],
+                y1=ob['high'],
+                fillcolor="red",
+                opacity=0.2,
+                layer="below",
+                line_width=0,
+            )
+
+        # Mise en forme
+        fig.update_layout(
+            title=f'{symbol} - Order Blocks (Bullish=Bleu, Bearish=Rouge)',
+            yaxis_title='Prix',
+            xaxis_title='Date',
+            template='plotly_dark',
+            height=800,
+            xaxis_rangeslider_visible=False
+        )
+
+        # Sauvegarder
+        filename = f'{symbol}_order_blocks.html'
+        fig.write_html(filename)
+        print(f"\nGraphique généré: {filename}")
+        print(f"Bullish Order Blocks (bleu): {len(bullish_obs)}")
+        print(f"Bearish Order Blocks (rouge): {len(bearish_obs)}")
+
+        return filename
+
+
     def run_backtest(self):
         """Execute le mode backtest avec simulation de trades"""
         backtest_config = self.settings['backtest']
@@ -329,15 +408,19 @@ class StockScanner:
             else:
                 print("\nAucun trade exécuté pendant la période de backtest.")
 
-            # Analyse SMC actuelle (dernière bougie)
-            smc_result = self.smc_analyzer.analyze(df)
-            pd_zones = smc_result['premium_discount']
+            # Générer le graphique si demandé
+            if self.chart_symbol:
+                self.generate_chart(symbol, df)
+            else:
+                # Analyse SMC actuelle (dernière bougie)
+                smc_result = self.smc_analyzer.analyze(df)
+                pd_zones = smc_result['premium_discount']
 
-            print(f"\n--- SITUATION ACTUELLE ---")
-            print(f"Prix: ${pd_zones['current_price']:.2f}")
-            print(f"Zone: {pd_zones['current_zone'].upper()}")
-            print(f"Order Blocks: {len(smc_result['order_blocks']['bullish'])} bullish, {len(smc_result['order_blocks']['bearish'])} bearish")
-            print(f"Fair Value Gaps: {len(smc_result['fvg']['bullish'])} bullish, {len(smc_result['fvg']['bearish'])} bearish")
+                print(f"\n--- SITUATION ACTUELLE ---")
+                print(f"Prix: ${pd_zones['current_price']:.2f}")
+                print(f"Zone: {pd_zones['current_zone'].upper()}")
+                print(f"Order Blocks: {len(smc_result['order_blocks']['bullish'])} bullish, {len(smc_result['order_blocks']['bearish'])} bearish")
+                print(f"Fair Value Gaps: {len(smc_result['fvg']['bullish'])} bullish, {len(smc_result['fvg']['bearish'])} bearish")
 
 
     def run(self):
