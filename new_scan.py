@@ -322,16 +322,24 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
 
             # Vérifier si le prix touche une zone bleue (Bullish OB)
+            alert_triggered = False
             for ob in bullish_obs:
                 if ob['low'] <= current_price <= ob['high']:
                     print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                    alert_triggered = True
                     break
 
             # Vérifier si le prix touche une zone rouge (Bearish OB)
-            for ob in bearish_obs:
-                if ob['low'] <= current_price <= ob['high']:
-                    print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                    break
+            if not alert_triggered:
+                for ob in bearish_obs:
+                    if ob['low'] <= current_price <= ob['high']:
+                        print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                        alert_triggered = True
+                        break
+
+            # Générer le graphique si une alerte a été déclenchée
+            if alert_triggered:
+                self.generate_chart(symbol, df)
 
 
     def run(self):
