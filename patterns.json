@@ -5,37 +5,6 @@
       "impulse_threshold": 1.0,
       "min_body_percent": 0.15,
       "description": "impulse_threshold: ratio du body de la bougie d'impulsion vs moyenne (1.0 = 1.0x la moyenne). min_body_percent: body minimum en % du range total (0.15 = 15%)"
-    },
-    "fair_value_gaps": {
-      "enabled": true,
-      "min_gap_percent": 0.001,
-      "description": "min_gap_percent: taille minimum du gap en % (0.001 = 0.1%)"
-    },
-    "break_of_structure": {
-      "enabled": true,
-      "swing_order": 5,
-      "description": "swing_order: nombre de bougies de chaque côté pour identifier un swing high/low (5 = regarde 5 bougies à gauche et 5 à droite)"
-    },
-    "liquidity": {
-      "enabled": true,
-      "swing_order": 5,
-      "weak_threshold": 1,
-      "strong_threshold": 3,
-      "description": "swing_order: ordre pour détecter les highs/lows. weak_threshold: nombre de tests pour être faible. strong_threshold: nombre de tests pour être fort"
-    },
-    "premium_discount": {
-      "enabled": true,
-      "lookback": 50,
-      "premium_level": 0.618,
-      "discount_level": 0.382,
-      "description": "lookback: nombre de bougies pour calculer le range. premium_level: niveau Fib pour zone premium (0.618 = 61.8%). discount_level: niveau Fib pour zone discount (0.382 = 38.2%)"
-    },
-    "alerts": {
-      "enabled": true,
-      "proximity_percent": 0.02,
-      "recent_lookback": 20,
-      "min_risk_reward": 1.5,
-      "description": "proximity_percent: tolérance pour détecter si prix est dans une zone (0.02 = 2%). recent_lookback: nombre de bougies pour déterminer la tendance (20). min_risk_reward: ratio R/R minimum pour générer une alerte (1.5)"
     }
   }
 }

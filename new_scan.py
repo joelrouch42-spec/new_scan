@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
-import time
 import argparse
-import numpy as np
-from typing import List, Tuple, Optional, Dict
 import plotly.graph_objects as go
 from smc_analyzer import SMCAnalyzer
 
@@ -35,12 +32,6 @@ class StockScanner:
             self.patterns_folder = "patterns_realtime"
 
         self.chart_symbol = chart_symbol
-
-        print("settings_file", settings_file)
-        print("is_backtest: ", is_backtest)
-        print("mode: ", self.mode)
-        print("folder: ", self.data_folder)
-        print("patterns_folder: ", self.patterns_folder)
 
 
     def get_data_filename(self, symbol, candle_nb, interval, date):
@@ -149,9 +140,6 @@ class StockScanner:
 
     def generate_chart(self, symbol, df):
         """Génère un graphique HTML avec les Order Blocks"""
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-
         # Analyse SMC
         smc_result = self.smc_analyzer.analyze(df)
         bullish_obs = smc_result['order_blocks']['bullish']
@@ -219,15 +207,15 @@ class StockScanner:
         # Sauvegarder
         filename = f'{symbol}_order_blocks.html'
         fig.write_html(filename)
-        print(f"\nGraphique généré: {filename}")
-        print(f"Bullish Order Blocks (bleu): {len(bullish_obs)}")
-        print(f"Bearish Order Blocks (rouge): {len(bearish_obs)}")
+        print(f"Graphique: {filename}")
+        print(f"Bullish OB (bleu): {len(bullish_obs)}")
+        print(f"Bearish OB (rouge): {len(bearish_obs)}")
 
         return filename
 
 
     def run_backtest(self):
-        """Execute le mode backtest avec simulation de trades"""
+        """Execute le mode backtest"""
         backtest_config = self.settings['backtest']
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
@@ -247,16 +235,14 @@ class StockScanner:
         if self.chart_symbol:
             watchlist = [item for item in watchlist if item['symbol'].upper() == self.chart_symbol.upper()]
             if not watchlist:
-                print(f"Erreur: Symbole {self.chart_symbol} non trouvé dans la watchlist")
+                print(f"Erreur: Symbole {self.chart_symbol} non trouvé")
                 return
 
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
-        print(today)
 
         for item in watchlist:
             symbol = item['symbol']
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
-            print(filename)
 
             # Télécharge ou charge les données
             if self.check_file_exists(filename):
@@ -271,156 +257,8 @@ class StockScanner:
             if df is None or len(df) == 0:
                 continue
 
-            total_candles = len(df)
-
-            print(f"\n{'='*60}")
-            print(f"BACKTEST SMC pour {symbol}")
-            print(f"{'='*60}")
-            print(f"Total candles: {total_candles}")
-            print(f"Période backtest: {candle_nb} bougies de training, {test_stop - test_start + 1} bougies de test")
-
-            # SIMULATION DE TRADING
-            trades = []
-            active_trade = None
-
-            # Commencer à la bougie candle_nb (après training)
-            start_idx = candle_nb
-            end_idx = total_candles - test_start + 1
-
-            for i in range(start_idx, end_idx):
-                # Données jusqu'à la bougie actuelle
-                df_current = df.iloc[:i].copy()
-                current_candle = df.iloc[i]
-
-                # Si on a un trade actif, vérifier stop/target
-                if active_trade:
-                    trade_type = active_trade['type']
-
-                    # Check LONG
-                    if 'LONG' in trade_type:
-                        # Stop hit
-                        if current_candle['Low'] <= active_trade['stop']:
-                            active_trade['exit_price'] = active_trade['stop']
-                            active_trade['exit_candle'] = i
-                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
-                            active_trade['result'] = 'LOSS'
-                            active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
-                            trades.append(active_trade)
-                            active_trade = None
-                        # Target hit
-                        elif current_candle['High'] >= active_trade['target']:
-                            active_trade['exit_price'] = active_trade['target']
-                            active_trade['exit_candle'] = i
-                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
-                            active_trade['result'] = 'WIN'
-                            active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
-                            trades.append(active_trade)
-                            active_trade = None
-
-                    # Check SHORT
-                    elif 'SHORT' in trade_type:
-                        # Stop hit
-                        if current_candle['High'] >= active_trade['stop']:
-                            active_trade['exit_price'] = active_trade['stop']
-                            active_trade['exit_candle'] = i
-                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
-                            active_trade['result'] = 'LOSS'
-                            active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
-                            trades.append(active_trade)
-                            active_trade = None
-                        # Target hit
-                        elif current_candle['Low'] <= active_trade['target']:
-                            active_trade['exit_price'] = active_trade['target']
-                            active_trade['exit_candle'] = i
-                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
-                            active_trade['result'] = 'WIN'
-                            active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
-                            trades.append(active_trade)
-                            active_trade = None
-
-                # Si pas de trade actif, chercher une alerte
-                if not active_trade:
-                    smc_result = self.smc_analyzer.analyze(df_current)
-                    alerts = self.smc_analyzer.detect_setups(df_current, smc_result)
-
-                    if alerts:
-                        # Prendre la première alerte
-                        alert = alerts[0]
-
-                        # Ouvrir le trade
-                        active_trade = {
-                            'type': alert['type'],
-                            'entry': alert['entry'],
-                            'stop': alert['stop'],
-                            'target': alert['target'],
-                            'entry_candle': i,
-                            'entry_date': df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}',
-                            'reason': alert['reason']
-                        }
-
-            # Clore le trade actif si encore ouvert à la fin
-            if active_trade:
-                last_candle = df.iloc[end_idx - 1]
-                active_trade['exit_price'] = last_candle['Close']
-                active_trade['exit_candle'] = end_idx - 1
-                active_trade['exit_date'] = df.iloc[end_idx - 1]['Date'] if 'Date' in df.columns else f'Candle {end_idx - 1}'
-                active_trade['result'] = 'OPEN'
-                if 'LONG' in active_trade['type']:
-                    active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
-                else:
-                    active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
-                trades.append(active_trade)
-
-            # AFFICHER LES RÉSULTATS
-            print(f"\n{'*'*60}")
-            print(f"   RÉSULTATS BACKTEST")
-            print(f"{'*'*60}")
-
-            if trades:
-                wins = [t for t in trades if t['result'] == 'WIN']
-                losses = [t for t in trades if t['result'] == 'LOSS']
-                total_trades = len(trades)
-                win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
-
-                total_pnl = sum(t['pnl'] for t in trades)
-                avg_win = sum(t['pnl'] for t in wins) / len(wins) if wins else 0
-                avg_loss = sum(t['pnl'] for t in losses) / len(losses) if losses else 0
-
-                print(f"\nTotal Trades: {total_trades}")
-                print(f"Wins: {len(wins)} | Losses: {len(losses)}")
-                print(f"Win Rate: {win_rate:.1f}%")
-                print(f"Total P&L: ${total_pnl:.2f}")
-                print(f"Average Win: ${avg_win:.2f}")
-                print(f"Average Loss: ${avg_loss:.2f}")
-
-                if avg_loss != 0:
-                    profit_factor = abs(avg_win / avg_loss)
-                    print(f"Profit Factor: {profit_factor:.2f}")
-
-                print(f"\n--- DÉTAIL DES TRADES ---")
-                for i, trade in enumerate(trades, 1):
-                    print(f"\nTrade #{i}: {trade['type']} - {trade['result']}")
-                    print(f"  Entry: ${trade['entry']:.2f} @ {trade['entry_date']} (candle {trade['entry_candle']})")
-                    print(f"  Exit: ${trade['exit_price']:.2f} @ {trade['exit_date']} (candle {trade['exit_candle']})")
-                    print(f"  Stop: ${trade['stop']:.2f} | Target: ${trade['target']:.2f}")
-                    print(f"  P&L: ${trade['pnl']:.2f}")
-                    print(f"  Raison: {trade['reason']}")
-            else:
-                print("\nAucun trade exécuté pendant la période de backtest.")
-
-            # Générer le graphique si demandé
-            if self.chart_symbol:
-                self.generate_chart(symbol, df)
-            else:
-                # Analyse SMC actuelle (dernière bougie)
-                smc_result = self.smc_analyzer.analyze(df)
-                pd_zones = smc_result['premium_discount']
-
-                print(f"\n--- SITUATION ACTUELLE ---")
-                print(f"Prix: ${pd_zones['current_price']:.2f}")
-                print(f"Zone: {pd_zones['current_zone'].upper()}")
-                print(f"Order Blocks: {len(smc_result['order_blocks']['bullish'])} bullish, {len(smc_result['order_blocks']['bearish'])} bearish")
-                print(f"Fair Value Gaps: {len(smc_result['fvg']['bullish'])} bullish, {len(smc_result['fvg']['bearish'])} bearish")
+            # Générer le graphique
+            self.generate_chart(symbol, df)
 
 
     def run(self):
@@ -434,9 +272,9 @@ class StockScanner:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Scanner de stocks avec Smart Money Concepts')
+    parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
-    parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique HTML pour le symbole spécifié (ex: --chart AAPL)')
+    parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
     args = parser.parse_args()
 
     scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
