@@ -82,45 +82,49 @@ class SMCAnalyzer:
             # Bullish Order Block: bougie i-1 baissière + bougie i haussière forte
             if df.iloc[i]['Close'] > df.iloc[i]['Open']:  # Bougie i haussière
                 if df.iloc[i-1]['Close'] < df.iloc[i-1]['Open']:  # Bougie i-1 baissière
-                    ob = {
-                        'index': i-1,
-                        'low': df.iloc[i-1]['Low'],
-                        'high': df.iloc[i-1]['High'],
-                        'open': df.iloc[i-1]['Open'],
-                        'close': df.iloc[i-1]['Close']
-                    }
+                    # L'impulsion doit CASSER le high de la bougie baissière
+                    if df.iloc[i]['Close'] > df.iloc[i-1]['High']:
+                        ob = {
+                            'index': i-1,
+                            'low': df.iloc[i-1]['Low'],
+                            'high': df.iloc[i-1]['High'],
+                            'open': df.iloc[i-1]['Open'],
+                            'close': df.iloc[i-1]['Close']
+                        }
 
-                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
-                    # Un OB bullish est cassé si le prix CLOSE EN DESSOUS de son low
-                    is_valid = True
-                    for j in range(i, len(df)):
-                        if df.iloc[j]['Close'] < ob['low']:
-                            is_valid = False
-                            break
+                        # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                        # Un OB bullish est cassé si le prix CLOSE EN DESSOUS de son low
+                        is_valid = True
+                        for j in range(i, len(df)):
+                            if df.iloc[j]['Close'] < ob['low']:
+                                is_valid = False
+                                break
 
-                    if is_valid:
-                        bullish_obs.append(ob)
+                        if is_valid:
+                            bullish_obs.append(ob)
 
             # Bearish Order Block: bougie i-1 haussière + bougie i baissière forte
             elif df.iloc[i]['Close'] < df.iloc[i]['Open']:  # Bougie i baissière
                 if df.iloc[i-1]['Close'] > df.iloc[i-1]['Open']:  # Bougie i-1 haussière
-                    ob = {
-                        'index': i-1,
-                        'low': df.iloc[i-1]['Low'],
-                        'high': df.iloc[i-1]['High'],
-                        'open': df.iloc[i-1]['Open'],
-                        'close': df.iloc[i-1]['Close']
-                    }
+                    # L'impulsion doit CASSER le low de la bougie haussière
+                    if df.iloc[i]['Close'] < df.iloc[i-1]['Low']:
+                        ob = {
+                            'index': i-1,
+                            'low': df.iloc[i-1]['Low'],
+                            'high': df.iloc[i-1]['High'],
+                            'open': df.iloc[i-1]['Open'],
+                            'close': df.iloc[i-1]['Close']
+                        }
 
-                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
-                    # Un OB bearish est cassé si le prix CLOSE AU DESSUS de son high
-                    is_valid = True
-                    for j in range(i, len(df)):
-                        if df.iloc[j]['Close'] > ob['high']:
-                            is_valid = False
-                            break
+                        # Vérifier si l'OB est toujours valide (pas cassé depuis)
+                        # Un OB bearish est cassé si le prix CLOSE AU DESSUS de son high
+                        is_valid = True
+                        for j in range(i, len(df)):
+                            if df.iloc[j]['Close'] > ob['high']:
+                                is_valid = False
+                                break
 
-                    if is_valid:
-                        bearish_obs.append(ob)
+                        if is_valid:
+                            bearish_obs.append(ob)
 
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
