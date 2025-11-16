@@ -223,6 +223,7 @@ class StockScanner:
                         if current_candle['Low'] <= active_trade['stop']:
                             active_trade['exit_price'] = active_trade['stop']
                             active_trade['exit_candle'] = i
+                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
                             active_trade['result'] = 'LOSS'
                             active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
                             trades.append(active_trade)
@@ -231,6 +232,7 @@ class StockScanner:
                         elif current_candle['High'] >= active_trade['target']:
                             active_trade['exit_price'] = active_trade['target']
                             active_trade['exit_candle'] = i
+                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
                             active_trade['result'] = 'WIN'
                             active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
                             trades.append(active_trade)
@@ -242,6 +244,7 @@ class StockScanner:
                         if current_candle['High'] >= active_trade['stop']:
                             active_trade['exit_price'] = active_trade['stop']
                             active_trade['exit_candle'] = i
+                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
                             active_trade['result'] = 'LOSS'
                             active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
                             trades.append(active_trade)
@@ -250,6 +253,7 @@ class StockScanner:
                         elif current_candle['Low'] <= active_trade['target']:
                             active_trade['exit_price'] = active_trade['target']
                             active_trade['exit_candle'] = i
+                            active_trade['exit_date'] = df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}'
                             active_trade['result'] = 'WIN'
                             active_trade['pnl'] = active_trade['entry'] - active_trade['exit_price']
                             trades.append(active_trade)
@@ -271,6 +275,7 @@ class StockScanner:
                             'stop': alert['stop'],
                             'target': alert['target'],
                             'entry_candle': i,
+                            'entry_date': df.iloc[i]['Date'] if 'Date' in df.columns else f'Candle {i}',
                             'reason': alert['reason']
                         }
 
@@ -279,6 +284,7 @@ class StockScanner:
                 last_candle = df.iloc[end_idx - 1]
                 active_trade['exit_price'] = last_candle['Close']
                 active_trade['exit_candle'] = end_idx - 1
+                active_trade['exit_date'] = df.iloc[end_idx - 1]['Date'] if 'Date' in df.columns else f'Candle {end_idx - 1}'
                 active_trade['result'] = 'OPEN'
                 if 'LONG' in active_trade['type']:
                     active_trade['pnl'] = active_trade['exit_price'] - active_trade['entry']
@@ -315,8 +321,8 @@ class StockScanner:
                 print(f"\n--- DÉTAIL DES TRADES ---")
                 for i, trade in enumerate(trades, 1):
                     print(f"\nTrade #{i}: {trade['type']} - {trade['result']}")
-                    print(f"  Entry: ${trade['entry']:.2f} (candle {trade['entry_candle']})")
-                    print(f"  Exit: ${trade['exit_price']:.2f} (candle {trade['exit_candle']})")
+                    print(f"  Entry: ${trade['entry']:.2f} @ {trade['entry_date']} (candle {trade['entry_candle']})")
+                    print(f"  Exit: ${trade['exit_price']:.2f} @ {trade['exit_date']} (candle {trade['exit_candle']})")
                     print(f"  Stop: ${trade['stop']:.2f} | Target: ${trade['target']:.2f}")
                     print(f"  P&L: ${trade['pnl']:.2f}")
                     print(f"  Raison: {trade['reason']}")
