@@ -254,27 +254,26 @@ class StockScanner:
             xaxis_rangeslider_visible=False
         )
 
-        # Ligne verticale pour la position courante
-        current_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
+        # Ligne horizontale pour le prix actuel
         current_price = df.iloc[-1]['Close']
         fig.add_shape(
             type="line",
-            x0=current_date,
-            x1=current_date,
-            y0=0,
-            y1=1,
-            yref="paper",
+            x0=0,
+            x1=1,
+            xref="paper",
+            y0=current_price,
+            y1=current_price,
             line=dict(color="yellow", width=2, dash="dash")
         )
         fig.add_annotation(
-            x=current_date,
-            y=1,
-            yref="paper",
-            text=f"Prix actuel: ${current_price:.2f}",
+            x=1,
+            xref="paper",
+            y=current_price,
+            text=f"${current_price:.2f}",
             showarrow=False,
-            yanchor="bottom",
-            font=dict(color="yellow", size=12),
-            bgcolor="rgba(0,0,0,0.5)"
+            xanchor="left",
+            font=dict(color="yellow", size=14, weight="bold"),
+            bgcolor="rgba(0,0,0,0.7)"
         )
 
         # Sauvegarder dans le dossier chart
