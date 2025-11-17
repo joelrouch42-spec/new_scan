@@ -134,7 +134,12 @@ class SMCAnalyzer:
 
         # Besoin d'au moins 2 pivots de chaque type
         if len(high_points_arr) < 2 or len(low_points_arr) < 2:
+            print(f"DEBUG SMC: Pas assez de pivots - highs={len(high_points_arr)}, lows={len(low_points_arr)}")
             return {'bullish': [], 'bearish': []}
+
+        print(f"DEBUG SMC: Pivots détectés - {len(high_points_arr)} highs, {len(low_points_arr)} lows")
+        print(f"DEBUG SMC: high_points={high_points_arr[:5]}, high_indices={high_index_arr[:5]}")
+        print(f"DEBUG SMC: low_points={low_points_arr[:5]}, low_indices={low_index_arr[:5]}")
 
         # Étape 2: Détection des Market Structure Breaks (comme PineScript)
         # On itère sur toutes les combinaisons de pivots
@@ -157,6 +162,7 @@ class SMCAnalyzer:
             # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
             if market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor:
                 market = 1
+                print(f"DEBUG SMC: MSB Bullish détecté! h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}")
 
                 # Bu-OB: dernière bougie rouge entre h1i et l0i
                 bu_ob_index = None
@@ -165,6 +171,7 @@ class SMCAnalyzer:
                         bu_ob_index = j
 
                 if bu_ob_index is not None:
+                    print(f"DEBUG SMC: Bullish OB ajouté à index {bu_ob_index}")
                     bullish_obs.append({
                         'index': bu_ob_index,
                         'low': df['Low'].iloc[bu_ob_index],
