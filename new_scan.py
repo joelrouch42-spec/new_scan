@@ -331,21 +331,24 @@ class StockScanner:
             # Prix actuel
             current_price = df.iloc[-1]['Close']
 
-            # Vérifier si le prix touche une zone
-            touches_ob = False
+            # Vérifier si le prix touche une zone bullish
+            alert_triggered = False
             for ob in bullish_obs:
                 if ob['low'] <= current_price <= ob['high']:
-                    touches_ob = True
+                    print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                    alert_triggered = True
                     break
 
-            if not touches_ob:
+            # Vérifier si le prix touche une zone bearish
+            if not alert_triggered:
                 for ob in bearish_obs:
                     if ob['low'] <= current_price <= ob['high']:
-                        touches_ob = True
+                        print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                        alert_triggered = True
                         break
 
             # Générer le graphique seulement si le prix touche un Order Block
-            if touches_ob:
+            if alert_triggered:
                 self.generate_chart(symbol, df)
 
 
