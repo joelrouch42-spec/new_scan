@@ -359,9 +359,12 @@ class StockScanner:
 
     def run_realtime(self):
         """Execute le mode realtime avec alertes sur NASDAQ 100"""
+        import time
+
         realtime_config = self.settings['realtime']
         candle_nb = realtime_config['candle_nb']
         interval = realtime_config['interval']
+        update_interval = realtime_config['update_interval_seconds']
 
         # Créer les dossiers
         os.makedirs(self.data_folder, exist_ok=True)
@@ -369,52 +372,69 @@ class StockScanner:
 
         # Scanne NASDAQ 100
         watchlist = self.get_nasdaq100_symbols()
-        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
-        for item in watchlist:
-            symbol = item['symbol']
-            filename = self.get_data_filename(symbol, candle_nb, interval, today)
+        print(f"Scanner realtime démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
+        print("Appuyez sur Ctrl+C pour arrêter\n")
 
-            # Télécharge ou charge les données
-            if self.check_file_exists(filename):
-                df = pd.read_csv(filename)
-            else:
-                df = self.download_ibkr_data(symbol, candle_nb, interval)
-                if df is not None:
-                    df.to_csv(filename, index=False)
-                else:
-                    continue
+        while True:
+            try:
+                now = datetime.now(ZoneInfo('America/New_York'))
+                today = now.strftime('%Y-%m-%d')
+                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
 
-            if df is None or len(df) == 0:
-                continue
+                print(f"=== Scan {timestamp} ===")
 
-            # Analyse SMC
-            smc_result = self.smc_analyzer.analyze(df)
-            bullish_obs = smc_result['order_blocks']['bullish']
-            bearish_obs = smc_result['order_blocks']['bearish']
+                for item in watchlist:
+                    symbol = item['symbol']
+                    filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
-            # Prix actuel
-            current_price = df.iloc[-1]['Close']
+                    # Télécharge les données fraîches (pas de cache en realtime)
+                    df = self.download_ibkr_data(symbol, candle_nb, interval)
+                    if df is not None:
+                        df.to_csv(filename, index=False)
+                    else:
+                        continue
 
-            # Vérifier si le prix touche une zone bleue (Bullish OB)
-            alert_triggered = False
-            for ob in bullish_obs:
-                if ob['low'] <= current_price <= ob['high']:
-                    print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                    alert_triggered = True
-                    break
+                    if df is None or len(df) == 0:
+                        continue
 
-            # Vérifier si le prix touche une zone rouge (Bearish OB)
-            if not alert_triggered:
-                for ob in bearish_obs:
-                    if ob['low'] <= current_price <= ob['high']:
-                        print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                        alert_triggered = True
-                        break
+                    # Analyse SMC
+                    smc_result = self.smc_analyzer.analyze(df)
+                    bullish_obs = smc_result['order_blocks']['bullish']
+                    bearish_obs = smc_result['order_blocks']['bearish']
 
-            # Générer le graphique si une alerte a été déclenchée
-            if alert_triggered:
-                self.generate_chart(symbol, df)
+                    # Prix actuel
+                    current_price = df.iloc[-1]['Close']
+
+                    # Vérifier si le prix touche une zone bleue (Bullish OB)
+                    alert_triggered = False
+                    for ob in bullish_obs:
+                        if ob['low'] <= current_price <= ob['high']:
+                            print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                            alert_triggered = True
+                            break
+
+                    # Vérifier si le prix touche une zone rouge (Bearish OB)
+                    if not alert_triggered:
+                        for ob in bearish_obs:
+                            if ob['low'] <= current_price <= ob['high']:
+                                print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                                alert_triggered = True
+                                break
+
+                    # Générer le graphique si une alerte a été déclenchée
+                    if alert_triggered:
+                        self.generate_chart(symbol, df)
+
+                print(f"Prochain scan dans {update_interval}s...\n")
+                time.sleep(update_interval)
+
+            except KeyboardInterrupt:
+                print("\nScanner arrêté par l'utilisateur")
+                break
+            except Exception as e:
+                print(f"Erreur: {e}")
+                time.sleep(update_interval)
 
 
     def run(self):
