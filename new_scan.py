@@ -186,12 +186,13 @@ class StockScanner:
         for ob in bullish_obs:
             idx = ob['index']
             date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+            end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
 
             # Zone rectangulaire qui s'étend jusqu'à la fin
             fig.add_shape(
                 type="rect",
                 x0=date,
-                x1=df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1,
+                x1=end_date,
                 y0=ob['low'],
                 y1=ob['high'],
                 fillcolor="blue",
@@ -200,22 +201,47 @@ class StockScanner:
                 line_width=0,
             )
 
+            # Label des prix à droite
+            mid_price = (ob['low'] + ob['high']) / 2
+            fig.add_annotation(
+                x=end_date,
+                y=mid_price,
+                text=f"{ob['low']:.2f}-{ob['high']:.2f}",
+                showarrow=False,
+                xanchor="left",
+                font=dict(color="blue", size=10),
+                bgcolor="rgba(0,0,255,0.1)"
+            )
+
         # Ajouter les zones ROUGES (Bearish Order Blocks)
         for ob in bearish_obs:
             idx = ob['index']
             date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+            end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
 
             # Zone rectangulaire qui s'étend jusqu'à la fin
             fig.add_shape(
                 type="rect",
                 x0=date,
-                x1=df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1,
+                x1=end_date,
                 y0=ob['low'],
                 y1=ob['high'],
                 fillcolor="red",
                 opacity=0.2,
                 layer="below",
                 line_width=0,
+            )
+
+            # Label des prix à droite
+            mid_price = (ob['low'] + ob['high']) / 2
+            fig.add_annotation(
+                x=end_date,
+                y=mid_price,
+                text=f"{ob['low']:.2f}-{ob['high']:.2f}",
+                showarrow=False,
+                xanchor="left",
+                font=dict(color="red", size=10),
+                bgcolor="rgba(255,0,0,0.1)"
             )
 
         # Mise en forme
