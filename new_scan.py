@@ -331,8 +331,30 @@ class StockScanner:
             if df is None or len(df) == 0:
                 continue
 
-            # Générer le graphique
-            self.generate_chart(symbol, df)
+            # Analyser SMC pour voir si le prix touche un Order Block
+            smc_result = self.smc_analyzer.analyze(df)
+            bullish_obs = smc_result['order_blocks']['bullish']
+            bearish_obs = smc_result['order_blocks']['bearish']
+
+            # Prix actuel
+            current_price = df.iloc[-1]['Close']
+
+            # Vérifier si le prix touche une zone
+            touches_ob = False
+            for ob in bullish_obs:
+                if ob['low'] <= current_price <= ob['high']:
+                    touches_ob = True
+                    break
+
+            if not touches_ob:
+                for ob in bearish_obs:
+                    if ob['low'] <= current_price <= ob['high']:
+                        touches_ob = True
+                        break
+
+            # Générer le graphique seulement si le prix touche un Order Block
+            if touches_ob:
+                self.generate_chart(symbol, df)
 
 
     def run_realtime(self):

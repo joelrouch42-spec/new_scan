@@ -1171,19 +1171,21 @@ class StockScanner:
                     smc_result = self.smc_analyzer.analyze(df_until_pos)
                     order_blocks = smc_result.get('order_blocks', {})
 
-                    # Vérifie les Order Blocks bullish récents
-                    for ob in order_blocks.get('bullish', []):
-                        # Si l'OB est sur la dernière ou avant-dernière bougie
-                        if ob['index'] >= len(df_until_pos) - 2:
-                            current_date = df_until_pos['Date'].iloc[ob['index']]
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BULLISH à ${ob['low']:.2f}-${ob['high']:.2f}")
+                    # Prix actuel (dernière bougie)
+                    current_price = df_until_pos['Close'].iloc[-1]
+                    current_date = df_until_pos['Date'].iloc[-1]
 
-                    # Vérifie les Order Blocks bearish récents
+                    # Vérifie si le prix touche un Order Block bullish
+                    for ob in order_blocks.get('bullish', []):
+                        # Alerte seulement si le prix touche la zone
+                        if ob['low'] <= current_price <= ob['high']:
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BULLISH touché à ${current_price:.2f} (zone ${ob['low']:.2f}-${ob['high']:.2f})")
+
+                    # Vérifie si le prix touche un Order Block bearish
                     for ob in order_blocks.get('bearish', []):
-                        # Si l'OB est sur la dernière ou avant-dernière bougie
-                        if ob['index'] >= len(df_until_pos) - 2:
-                            current_date = df_until_pos['Date'].iloc[ob['index']]
-                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BEARISH à ${ob['low']:.2f}-${ob['high']:.2f}")
+                        # Alerte seulement si le prix touche la zone
+                        if ob['low'] <= current_price <= ob['high']:
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BEARISH touché à ${current_price:.2f} (zone ${ob['low']:.2f}-${ob['high']:.2f})")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
