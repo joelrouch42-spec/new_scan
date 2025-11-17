@@ -209,8 +209,8 @@ class StockScanner:
                 text=f"{ob['low']:.2f}-{ob['high']:.2f}",
                 showarrow=False,
                 xanchor="left",
-                font=dict(color="blue", size=10),
-                bgcolor="rgba(0,0,255,0.1)"
+                font=dict(color="white", size=14),
+                bgcolor="rgba(0,0,255,0.3)"
             )
 
         # Ajouter les zones ROUGES (Bearish Order Blocks)
@@ -240,8 +240,8 @@ class StockScanner:
                 text=f"{ob['low']:.2f}-{ob['high']:.2f}",
                 showarrow=False,
                 xanchor="left",
-                font=dict(color="red", size=10),
-                bgcolor="rgba(255,0,0,0.1)"
+                font=dict(color="red", size=14),
+                bgcolor="rgba(0,0,0,0.5)"
             )
 
         # Mise en forme
