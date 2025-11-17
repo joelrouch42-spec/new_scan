@@ -39,6 +39,7 @@ class StockScanner:
         # Initialiser SMC Analyzer
         smc_config = self.patterns_config.get('smc', {})
         self.smc_analyzer = SMCAnalyzer(smc_config)
+        self.ob_config = smc_config.get('order_blocks', {})
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
@@ -1164,6 +1165,25 @@ class StockScanner:
                             direction = 'UP' if breakout['direction'] == 'up' else 'DOWN'
                             label = 'résistance' if breakout['type'] == 'resistance_breakout' else 'support'
                             print(f"{symbol}: Bougie {candle_nb} ({current_date}): BREAKOUT {direction} {label} à {breakout['level']:.2f}")
+
+                # Détecte SMC Order Blocks
+                if self.ob_config.get('enabled', True) and len(df_until_pos) >= 20:
+                    smc_result = self.smc_analyzer.analyze(df_until_pos)
+                    order_blocks = smc_result.get('order_blocks', {})
+
+                    # Vérifie les Order Blocks bullish récents
+                    for ob in order_blocks.get('bullish', []):
+                        # Si l'OB est sur la dernière ou avant-dernière bougie
+                        if ob['index'] >= len(df_until_pos) - 2:
+                            current_date = df_until_pos['Date'].iloc[ob['index']]
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BULLISH à ${ob['low']:.2f}-${ob['high']:.2f}")
+
+                    # Vérifie les Order Blocks bearish récents
+                    for ob in order_blocks.get('bearish', []):
+                        # Si l'OB est sur la dernière ou avant-dernière bougie
+                        if ob['index'] >= len(df_until_pos) - 2:
+                            current_date = df_until_pos['Date'].iloc[ob['index']]
+                            print(f"{symbol}: Bougie {candle_nb} ({current_date}): 📊 SMC ORDER BLOCK BEARISH à ${ob['low']:.2f}-${ob['high']:.2f}")
 
                 # Sauvegarde les S/R pour la première bougie testée (la plus récente)
                 if candle_nb == test_start:
