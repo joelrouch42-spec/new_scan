@@ -28,13 +28,6 @@ class StockScanner:
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
-
-        # Dossiers différents selon le mode
-        if self.mode == 'backtest':
-            self.patterns_folder = "patterns_backtest"
-        else:
-            self.patterns_folder = "patterns_realtime"
-
         self.chart_symbol = chart_symbol
 
 
@@ -301,9 +294,8 @@ class StockScanner:
         # Calculer le nombre total de bougies à charger
         total_candles_needed = candle_nb + test_stop
 
-        # Créer les dossiers data et patterns_backtest s'ils n'existent pas
+        # Créer le dossier data s'il n'existe pas
         os.makedirs(self.data_folder, exist_ok=True)
-        os.makedirs(self.patterns_folder, exist_ok=True)
 
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
@@ -366,9 +358,8 @@ class StockScanner:
         interval = realtime_config['interval']
         update_interval = realtime_config['update_interval_seconds']
 
-        # Créer les dossiers
+        # Créer le dossier data
         os.makedirs(self.data_folder, exist_ok=True)
-        os.makedirs(self.patterns_folder, exist_ok=True)
 
         # Scanne NASDAQ 100
         watchlist = self.get_nasdaq100_symbols()
