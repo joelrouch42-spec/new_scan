@@ -159,15 +159,19 @@ class StockScanner:
 
 
     def generate_chart(self, symbol, df):
-        """Génère un graphique HTML avec les Order Blocks"""
-        # Créer le dossier chart s'il n'existe pas
-        chart_folder = 'chart'
-        os.makedirs(chart_folder, exist_ok=True)
-
+        """Génère un graphique HTML avec les Order Blocks - seulement si Order Blocks détectés"""
         # Analyse SMC
         smc_result = self.smc_analyzer.analyze(df)
         bullish_obs = smc_result['order_blocks']['bullish']
         bearish_obs = smc_result['order_blocks']['bearish']
+
+        # Ne rien faire si aucun Order Block détecté
+        if len(bullish_obs) == 0 and len(bearish_obs) == 0:
+            return None
+
+        # Créer le dossier chart s'il n'existe pas
+        chart_folder = 'chart'
+        os.makedirs(chart_folder, exist_ok=True)
 
         # Créer le graphique de chandelles
         fig = go.Figure()
@@ -279,9 +283,9 @@ class StockScanner:
         # Sauvegarder dans le dossier chart
         filename = os.path.join(chart_folder, f'{symbol}_order_blocks.html')
         fig.write_html(filename)
-        print(f"Graphique: {filename}")
-        print(f"Bullish OB (bleu): {len(bullish_obs)}")
-        print(f"Bearish OB (rouge): {len(bearish_obs)}")
+        print(f"{symbol}: 📊 Order Blocks détectés → {filename}")
+        print(f"  Bullish OB (bleu): {len(bullish_obs)}")
+        print(f"  Bearish OB (rouge): {len(bearish_obs)}")
 
         return filename
 
@@ -305,7 +309,8 @@ class StockScanner:
         if self.chart_symbol:
             watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
         else:
-            watchlist = self.load_watchlist()
+            # Scanner tous les stocks NASDAQ 100
+            watchlist = self.get_nasdaq100_symbols()
 
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
 
