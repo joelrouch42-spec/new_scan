@@ -254,6 +254,18 @@ class StockScanner:
             xaxis_rangeslider_visible=False
         )
 
+        # Ligne verticale pour la position courante
+        current_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
+        current_price = df.iloc[-1]['Close']
+        fig.add_vline(
+            x=current_date,
+            line_dash="dash",
+            line_color="yellow",
+            line_width=2,
+            annotation_text=f"Prix actuel: ${current_price:.2f}",
+            annotation_position="top"
+        )
+
         # Sauvegarder dans le dossier chart
         filename = os.path.join(chart_folder, f'{symbol}_order_blocks.html')
         fig.write_html(filename)
