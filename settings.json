@@ -1,14 +1,14 @@
 {
   "data_folder": "data",
   "backtest": {
-    "candle_nb": 120,
+    "candle_nb": 250,
     "interval": "1d",
     "data_source": "yahoo",
     "test_candle_start": 1,
     "test_candle_stop": 10
   },
   "realtime": {
-    "candle_nb": 130,
+    "candle_nb": 250,
     "interval": "1d",
     "update_interval_seconds": 60,
     "ibkr_host": "127.0.0.1",
