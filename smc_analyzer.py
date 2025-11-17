@@ -146,16 +146,7 @@ class SMCAnalyzer:
                                 'open': df['Open'].iloc[ob_index],
                                 'close': df['Close'].iloc[ob_index]
                             }
-
-                            # Vérifier si valide (pas cassé après)
-                            is_valid = True
-                            for k in range(ob_index + 1, len(df)):
-                                if df['Close'].iloc[k] < ob['low']:
-                                    is_valid = False
-                                    break
-
-                            if is_valid:
-                                bullish_obs.append(ob)
+                            bullish_obs.append(ob)
 
                         market_structure = 1
 
@@ -187,16 +178,7 @@ class SMCAnalyzer:
                                 'open': df['Open'].iloc[ob_index],
                                 'close': df['Close'].iloc[ob_index]
                             }
-
-                            # Vérifier si valide (pas cassé après)
-                            is_valid = True
-                            for k in range(ob_index + 1, len(df)):
-                                if df['Close'].iloc[k] > ob['high']:
-                                    is_valid = False
-                                    break
-
-                            if is_valid:
-                                bearish_obs.append(ob)
+                            bearish_obs.append(ob)
 
                         market_structure = -1
 
