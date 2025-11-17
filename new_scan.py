@@ -257,13 +257,24 @@ class StockScanner:
         # Ligne verticale pour la position courante
         current_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
         current_price = df.iloc[-1]['Close']
-        fig.add_vline(
+        fig.add_shape(
+            type="line",
+            x0=current_date,
+            x1=current_date,
+            y0=0,
+            y1=1,
+            yref="paper",
+            line=dict(color="yellow", width=2, dash="dash")
+        )
+        fig.add_annotation(
             x=current_date,
-            line_dash="dash",
-            line_color="yellow",
-            line_width=2,
-            annotation_text=f"Prix actuel: ${current_price:.2f}",
-            annotation_position="top"
+            y=1,
+            yref="paper",
+            text=f"Prix actuel: ${current_price:.2f}",
+            showarrow=False,
+            yanchor="bottom",
+            font=dict(color="yellow", size=12),
+            bgcolor="rgba(0,0,0,0.5)"
         )
 
         # Sauvegarder dans le dossier chart
