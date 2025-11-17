@@ -142,20 +142,41 @@ class SMCAnalyzer:
         print(f"DEBUG SMC: low_points={low_points_arr[:5]}, low_indices={low_index_arr[:5]}")
 
         # Étape 2: Détection des Market Structure Breaks (comme PineScript)
-        # On itère sur toutes les combinaisons de pivots
+        # Utiliser les 2 derniers pivots de chaque type
         market = 1
 
-        for i in range(2, min(len(high_points_arr), len(low_points_arr))):
-            # Get pivots (notation PineScript: 0=latest, 1=previous)
-            h0 = high_points_arr[-1] if i >= len(high_points_arr) else high_points_arr[i]
-            h0i = high_index_arr[-1] if i >= len(high_index_arr) else high_index_arr[i]
-            h1 = high_points_arr[i-1]
-            h1i = high_index_arr[i-1]
+        # Vérifier toutes les paires de pivots possibles dans l'ordre chronologique
+        # Créer une liste de tous les pivots triés par index
+        all_pivots = []
+        for i, (val, idx) in enumerate(zip(high_points_arr, high_index_arr)):
+            all_pivots.append(('high', i, val, idx))
+        for i, (val, idx) in enumerate(zip(low_points_arr, low_index_arr)):
+            all_pivots.append(('low', i, val, idx))
 
-            l0 = low_points_arr[-1] if i >= len(low_points_arr) else low_points_arr[i]
-            l0i = low_index_arr[-1] if i >= len(low_index_arr) else low_index_arr[i]
-            l1 = low_points_arr[i-1]
-            l1i = low_index_arr[i-1]
+        # Trier par index chronologique
+        all_pivots.sort(key=lambda x: x[3])
+
+        print(f"DEBUG SMC: Pivots chronologiques: {[(p[0], p[2], p[3]) for p in all_pivots[:10]]}")
+
+        # Parcourir les pivots dans l'ordre chronologique
+        for pi in range(2, len(all_pivots)):
+            # Get the last 2 high pivots and last 2 low pivots seen so far
+            highs_so_far = [p for p in all_pivots[:pi+1] if p[0] == 'high']
+            lows_so_far = [p for p in all_pivots[:pi+1] if p[0] == 'low']
+
+            if len(highs_so_far) < 2 or len(lows_so_far) < 2:
+                continue
+
+            # Get pivots (notation PineScript: 0=latest, 1=previous)
+            h0 = highs_so_far[-1][2]
+            h0i = highs_so_far[-1][3]
+            h1 = highs_so_far[-2][2]
+            h1i = highs_so_far[-2][3]
+
+            l0 = lows_so_far[-1][2]
+            l0i = lows_so_far[-1][3]
+            l1 = lows_so_far[-2][2]
+            l1i = lows_so_far[-2][3]
 
             prev_market = market
 
