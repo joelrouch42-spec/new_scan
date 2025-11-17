@@ -152,15 +152,11 @@ class StockScanner:
 
 
     def generate_chart(self, symbol, df):
-        """Génère un graphique HTML avec les Order Blocks - seulement si Order Blocks détectés"""
+        """Génère un graphique HTML avec les Order Blocks"""
         # Analyse SMC
         smc_result = self.smc_analyzer.analyze(df)
         bullish_obs = smc_result['order_blocks']['bullish']
         bearish_obs = smc_result['order_blocks']['bearish']
-
-        # Ne rien faire si aucun Order Block détecté
-        if len(bullish_obs) == 0 and len(bearish_obs) == 0:
-            return None
 
         # Créer le dossier chart s'il n'existe pas
         chart_folder = 'chart'
@@ -350,8 +346,8 @@ class StockScanner:
                         alert_triggered = True
                         break
 
-            # Générer le graphique seulement si le prix touche un Order Block
-            if alert_triggered:
+            # Générer le graphique si --chart spécifié OU si alerte déclenchée
+            if self.chart_symbol or alert_triggered:
                 self.generate_chart(symbol, df)
 
 
