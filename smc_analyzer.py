@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
+import numpy as np
 import pandas as pd
-from typing import Dict
+from typing import List, Dict, Tuple, Optional
 
 
 class SMCAnalyzer:
     """
-    Smart Money Concepts Analyzer
-    Détecte: Order Blocks (zones de support/résistance institutionnelles)
+    Smart Money Concepts Analyzer avec Zigzag
+    Détecte: Order Blocks basés sur Market Structure
     """
 
     def __init__(self, config: dict):
@@ -37,96 +38,166 @@ class SMCAnalyzer:
         if len(df) < 10:
             return result
 
-        # Détection Order Blocks
+        # Détection Order Blocks avec zigzag
         if self.ob_config.get('enabled', True):
-            result['order_blocks'] = self._detect_order_blocks(df)
+            result['order_blocks'] = self._detect_order_blocks_zigzag(df)
 
         return result
 
 
-    def _detect_order_blocks(self, df: pd.DataFrame) -> Dict:
+    def _detect_order_blocks_zigzag(self, df: pd.DataFrame) -> Dict:
         """
-        Détecte les Order Blocks (bullish et bearish)
-        ET les invalide s'ils ont été cassés par le prix
+        Détecte les Order Blocks basés sur la structure zigzag du marché
 
-        Order Block = dernière bougie opposée avant une forte impulsion
+        Logique:
+        1. Calcule zigzag (pivots hauts/bas)
+        2. Détecte Market Structure Break (MSB)
+        3. OB Bullish = dernière bougie rouge entre pivot bas précédent et pivot haut actuel
+        4. OB Bearish = dernière bougie verte entre pivot haut précédent et pivot bas actuel
 
         Returns:
             Dict avec 'bullish' et 'bearish' order blocks VALIDES uniquement
         """
-        impulse_threshold = self.ob_config.get('impulse_threshold', 2.0)
-        min_body_percent = self.ob_config.get('min_body_percent', 0.3)
-        min_volume_ratio = self.ob_config.get('min_volume_ratio', 1.0)
+        zigzag_len = self.ob_config.get('zigzag_length', 9)
+        fib_factor = self.ob_config.get('fib_factor', 0.33)
 
         bullish_obs = []
         bearish_obs = []
 
-        # Calculer le body moyen sur 20 bougies pour référence
-        df_copy = df.copy()
-        df_copy['body'] = abs(df_copy['Close'] - df_copy['Open'])
-        df_copy['range'] = df_copy['High'] - df_copy['Low']
-        avg_body = df_copy['body'].rolling(window=20, min_periods=1).mean()
-        avg_volume = df_copy['Volume'].rolling(window=20, min_periods=1).mean()
+        # Arrays pour stocker les pivots
+        high_points = []
+        high_indices = []
+        low_points = []
+        low_indices = []
 
-        for i in range(1, len(df)):
-            current_body = abs(df.iloc[i]['Close'] - df.iloc[i]['Open'])
-            current_range = df.iloc[i]['High'] - df.iloc[i]['Low']
-            current_volume = df.iloc[i]['Volume']
+        # Détection des pivots zigzag
+        trend = 1  # 1 = up, -1 = down
 
-            # Bougie d'impulsion = body > threshold * moyenne
-            is_impulse = current_body > (impulse_threshold * avg_body.iloc[i])
+        for i in range(zigzag_len, len(df) - zigzag_len):
+            # Check si c'est un pivot haut
+            window_high = df['High'].iloc[i-zigzag_len:i+zigzag_len+1]
+            if df['High'].iloc[i] >= window_high.max():
+                if trend == 1:
+                    # Update dernier pivot haut
+                    if high_points and high_indices[-1] > i - 2*zigzag_len:
+                        if df['High'].iloc[i] > high_points[-1]:
+                            high_points[-1] = df['High'].iloc[i]
+                            high_indices[-1] = i
+                    else:
+                        high_points.append(df['High'].iloc[i])
+                        high_indices.append(i)
+                else:
+                    # Changement de tendance down -> up
+                    high_points.append(df['High'].iloc[i])
+                    high_indices.append(i)
+                    trend = 1
 
-            # Body doit être significatif (pas une doji)
-            has_significant_body = (current_body / current_range) > min_body_percent if current_range > 0 else False
+            # Check si c'est un pivot bas
+            window_low = df['Low'].iloc[i-zigzag_len:i+zigzag_len+1]
+            if df['Low'].iloc[i] <= window_low.min():
+                if trend == -1:
+                    # Update dernier pivot bas
+                    if low_points and low_indices[-1] > i - 2*zigzag_len:
+                        if df['Low'].iloc[i] < low_points[-1]:
+                            low_points[-1] = df['Low'].iloc[i]
+                            low_indices[-1] = i
+                    else:
+                        low_points.append(df['Low'].iloc[i])
+                        low_indices.append(i)
+                else:
+                    # Changement de tendance up -> down
+                    low_points.append(df['Low'].iloc[i])
+                    low_indices.append(i)
+                    trend = -1
 
-            # Volume doit être supérieur à la moyenne
-            has_volume = current_volume > (min_volume_ratio * avg_volume.iloc[i])
+        # Besoin d'au moins 2 pivots hauts et 2 pivots bas
+        if len(high_points) < 2 or len(low_points) < 2:
+            return {'bullish': [], 'bearish': []}
 
-            if not (is_impulse and has_significant_body and has_volume):
-                continue
+        # Détecter les Market Structure Breaks et Order Blocks
+        market_structure = 1  # 1 = bullish, -1 = bearish
 
-            # Bullish Order Block: bougie i-1 baissière + bougie i haussière forte
-            if df.iloc[i]['Close'] > df.iloc[i]['Open']:  # Bougie i haussière
-                if df.iloc[i-1]['Close'] < df.iloc[i-1]['Open']:  # Bougie i-1 baissière
-                    ob = {
-                        'index': i-1,
-                        'low': df.iloc[i-1]['Low'],
-                        'high': df.iloc[i-1]['High'],
-                        'open': df.iloc[i-1]['Open'],
-                        'close': df.iloc[i-1]['Close']
-                    }
+        for i in range(1, min(len(high_points), len(low_points))):
+            # MSB Bullish: pivot haut actuel > pivot haut précédent
+            if len(high_points) > i and len(low_points) > i-1:
+                h0 = high_points[i]
+                h0i = high_indices[i]
+                h1 = high_points[i-1]
+                h1i = high_indices[i-1]
+                l0 = low_points[i-1] if i-1 < len(low_points) else low_points[-1]
+                l0i = low_indices[i-1] if i-1 < len(low_indices) else low_indices[-1]
+                l1 = low_points[i-2] if i-2 >= 0 else l0
+                l1i = low_indices[i-2] if i-2 >= 0 else l0i
 
-                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
-                    # Un OB bullish est cassé si le prix CLOSE EN DESSOUS de son low
-                    is_valid = True
-                    for j in range(i, len(df)):
-                        if df.iloc[j]['Close'] < ob['low']:
-                            is_valid = False
-                            break
+                # Check MSB Bullish
+                if l0 < l1 and h0 > h1 + (h1 - l1) * fib_factor:
+                    if market_structure != 1:
+                        # Chercher dernière bougie rouge entre h1 et l0
+                        ob_index = None
+                        for j in range(h1i, min(l0i + 1, len(df))):
+                            if df['Close'].iloc[j] < df['Open'].iloc[j]:
+                                ob_index = j
 
-                    if is_valid:
-                        bullish_obs.append(ob)
+                        if ob_index is not None:
+                            ob = {
+                                'index': ob_index,
+                                'low': df['Low'].iloc[ob_index],
+                                'high': df['High'].iloc[ob_index],
+                                'open': df['Open'].iloc[ob_index],
+                                'close': df['Close'].iloc[ob_index]
+                            }
 
-            # Bearish Order Block: bougie i-1 haussière + bougie i baissière forte
-            elif df.iloc[i]['Close'] < df.iloc[i]['Open']:  # Bougie i baissière
-                if df.iloc[i-1]['Close'] > df.iloc[i-1]['Open']:  # Bougie i-1 haussière
-                    ob = {
-                        'index': i-1,
-                        'low': df.iloc[i-1]['Low'],
-                        'high': df.iloc[i-1]['High'],
-                        'open': df.iloc[i-1]['Open'],
-                        'close': df.iloc[i-1]['Close']
-                    }
+                            # Vérifier si valide (pas cassé après)
+                            is_valid = True
+                            for k in range(ob_index + 1, len(df)):
+                                if df['Close'].iloc[k] < ob['low']:
+                                    is_valid = False
+                                    break
 
-                    # Vérifier si l'OB est toujours valide (pas cassé depuis)
-                    # Un OB bearish est cassé si le prix CLOSE AU DESSUS de son high
-                    is_valid = True
-                    for j in range(i, len(df)):
-                        if df.iloc[j]['Close'] > ob['high']:
-                            is_valid = False
-                            break
+                            if is_valid:
+                                bullish_obs.append(ob)
 
-                    if is_valid:
-                        bearish_obs.append(ob)
+                        market_structure = 1
+
+            # MSB Bearish: pivot bas actuel < pivot bas précédent
+            if len(low_points) > i and len(high_points) > i-1:
+                l0 = low_points[i]
+                l0i = low_indices[i]
+                l1 = low_points[i-1]
+                l1i = low_indices[i-1]
+                h0 = high_points[i-1] if i-1 < len(high_points) else high_points[-1]
+                h0i = high_indices[i-1] if i-1 < len(high_indices) else high_indices[-1]
+                h1 = high_points[i-2] if i-2 >= 0 else h0
+                h1i = high_indices[i-2] if i-2 >= 0 else h0i
+
+                # Check MSB Bearish
+                if h0 > h1 and l0 < l1 - (h1 - l1) * fib_factor:
+                    if market_structure != -1:
+                        # Chercher dernière bougie verte entre l1 et h0
+                        ob_index = None
+                        for j in range(l1i, min(h0i + 1, len(df))):
+                            if df['Close'].iloc[j] > df['Open'].iloc[j]:
+                                ob_index = j
+
+                        if ob_index is not None:
+                            ob = {
+                                'index': ob_index,
+                                'low': df['Low'].iloc[ob_index],
+                                'high': df['High'].iloc[ob_index],
+                                'open': df['Open'].iloc[ob_index],
+                                'close': df['Close'].iloc[ob_index]
+                            }
+
+                            # Vérifier si valide (pas cassé après)
+                            is_valid = True
+                            for k in range(ob_index + 1, len(df)):
+                                if df['Close'].iloc[k] > ob['high']:
+                                    is_valid = False
+                                    break
+
+                            if is_valid:
+                                bearish_obs.append(ob)
+
+                        market_structure = -1
 
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
