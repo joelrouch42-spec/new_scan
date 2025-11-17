@@ -149,6 +149,7 @@ class SMCAnalyzer:
 
         print(f"DEBUG SMC: Début analyse MSB sur {len(df)} bougies")
 
+        eval_count = 0
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
             # Trouver les pivots connus à cette bougie
@@ -168,13 +169,21 @@ class SMCAnalyzer:
             if last_h0 == h0 and last_l0 == l0:
                 continue
 
+            eval_count += 1
+            if eval_count <= 10:  # Print seulement les 10 premières évaluations
+                print(f"DEBUG @ {bar_idx}: h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}, l1={l1:.2f}, market={market}")
+
             last_h0 = h0
             last_l0 = l0
 
             prev_market = market
 
             # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
-            if market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor:
+            bearish_cond = l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
+            if eval_count <= 10:
+                print(f"  Bearish check: l0<l1={l0 < l1}, threshold={l1 - abs(h0 - l1) * fib_factor:.2f}, l0={l0:.2f}, cond={bearish_cond}")
+
+            if market == 1 and bearish_cond:
                 market = -1
                 print(f"DEBUG SMC: MSB Bearish @ {bar_idx}! l0={l0:.2f}, l1={l1:.2f}, h0={h0:.2f}")
 
@@ -195,7 +204,11 @@ class SMCAnalyzer:
                     })
 
             # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
-            if market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor:
+            bullish_cond = h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
+            if eval_count <= 10:
+                print(f"  Bullish check: h0>h1={h0 > h1}, threshold={h1 + abs(h1 - l0) * fib_factor:.2f}, h0={h0:.2f}, cond={bullish_cond}")
+
+            if market == -1 and bullish_cond:
                 market = 1
                 print(f"DEBUG SMC: MSB Bullish @ {bar_idx}! h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}")
 
