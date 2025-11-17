@@ -348,6 +348,7 @@ class StockScanner:
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
             if self.chart_symbol or alert_triggered:
+                print(f">>> Génération graphique pour {symbol} (chart_symbol={self.chart_symbol})...")
                 self.generate_chart(symbol, df)
 
 
