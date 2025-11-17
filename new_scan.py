@@ -328,6 +328,9 @@ class StockScanner:
             bullish_obs = smc_result['order_blocks']['bullish']
             bearish_obs = smc_result['order_blocks']['bearish']
 
+            # Debug: afficher le nombre d'OB détectés
+            print(f"{symbol}: {len(bullish_obs)} OB bullish, {len(bearish_obs)} OB bearish détectés")
+
             # Prix actuel
             current_price = df.iloc[-1]['Close']
 
@@ -335,7 +338,7 @@ class StockScanner:
             alert_triggered = False
             for ob in bullish_obs:
                 if ob['low'] <= current_price <= ob['high']:
-                    print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                    print(f"  🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
                     alert_triggered = True
                     break
 
@@ -343,7 +346,7 @@ class StockScanner:
             if not alert_triggered:
                 for ob in bearish_obs:
                     if ob['low'] <= current_price <= ob['high']:
-                        print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                        print(f"  🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
                         alert_triggered = True
                         break
 
