@@ -12,6 +12,7 @@ import numpy as np
 from scipy.signal import argrelextrema
 from typing import List, Tuple, Optional, Dict
 import plotly.graph_objects as go
+from smc_analyzer import SMCAnalyzer
 
 
 class StockScanner:
@@ -34,6 +35,10 @@ class StockScanner:
             self.patterns_folder = f"{base_patterns_folder}_realtime"
 
         self.chart_symbol = chart_symbol
+
+        # Initialiser SMC Analyzer
+        smc_config = self.patterns_config.get('smc', {})
+        self.smc_analyzer = SMCAnalyzer(smc_config)
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
@@ -565,7 +570,7 @@ class StockScanner:
             return self.download_yahoo_data(symbol, candle_nb, interval)
 
     def generate_chart(self, symbol: str, df: pd.DataFrame, support_levels: List[float],
-                       resistance_levels: List[float], detected_patterns: List[Dict], date: str):
+                       resistance_levels: List[float], detected_patterns: List[Dict], date: str, smc_result: Optional[Dict] = None):
         """Génère un graphique HTML interactif pour un symbole
 
         Args:
@@ -575,6 +580,7 @@ class StockScanner:
             resistance_levels: Liste des niveaux de résistance
             detected_patterns: Liste des patterns détectés (breakouts, combos, etc.)
             date: Date du scan
+            smc_result: Résultat de l'analyse SMC (order blocks)
         """
         print(f"\nGénération du graphique pour {symbol}...")
 
@@ -862,6 +868,68 @@ class StockScanner:
                 )
             )
 
+        # Ajouter les Order Blocks SMC si disponibles
+        if smc_result:
+            order_blocks = smc_result.get('order_blocks', {})
+
+            # Order Blocks Bullish (rectangles verts)
+            for ob in order_blocks.get('bullish', []):
+                ob_index = ob['index']
+                ob_date = df['Date'].iloc[ob_index]
+                ob_low = ob['low']
+                ob_high = ob['high']
+
+                # Dessiner un rectangle transparent vert
+                fig.add_shape(
+                    type="rect",
+                    x0=ob_date,
+                    x1=df['Date'].iloc[-1],  # Étendre jusqu'à la fin
+                    y0=ob_low,
+                    y1=ob_high,
+                    fillcolor="rgba(0, 255, 0, 0.15)",
+                    line=dict(color="rgba(0, 200, 0, 0.5)", width=1),
+                    layer="below"
+                )
+
+                # Ajouter annotation
+                fig.add_annotation(
+                    x=ob_date,
+                    y=ob_high,
+                    text="OB Bullish",
+                    showarrow=False,
+                    font=dict(size=10, color="green"),
+                    bgcolor="rgba(0, 0, 0, 0.5)"
+                )
+
+            # Order Blocks Bearish (rectangles rouges)
+            for ob in order_blocks.get('bearish', []):
+                ob_index = ob['index']
+                ob_date = df['Date'].iloc[ob_index]
+                ob_low = ob['low']
+                ob_high = ob['high']
+
+                # Dessiner un rectangle transparent rouge
+                fig.add_shape(
+                    type="rect",
+                    x0=ob_date,
+                    x1=df['Date'].iloc[-1],  # Étendre jusqu'à la fin
+                    y0=ob_low,
+                    y1=ob_high,
+                    fillcolor="rgba(255, 0, 0, 0.15)",
+                    line=dict(color="rgba(200, 0, 0, 0.5)", width=1),
+                    layer="below"
+                )
+
+                # Ajouter annotation
+                fig.add_annotation(
+                    x=ob_date,
+                    y=ob_low,
+                    text="OB Bearish",
+                    showarrow=False,
+                    font=dict(size=10, color="red"),
+                    bgcolor="rgba(0, 0, 0, 0.5)"
+                )
+
         # Mise en forme
         fig.update_layout(
             title=f'{symbol} - Support/Resistance & Patterns - {date}',
@@ -1103,8 +1171,10 @@ class StockScanner:
 
             # Génère le graphique si ce symbole correspond à celui demandé
             if self.chart_symbol and self.chart_symbol.upper() == symbol.upper():
+                # Analyse SMC (Order Blocks)
+                smc_result = self.smc_analyzer.analyze(df)
                 # UTILISER LES MÊMES S/R calculés avant la boucle (pas de recalcul)
-                self.generate_chart(symbol, df, support_levels, resistance_levels, detected_patterns, today)
+                self.generate_chart(symbol, df, support_levels, resistance_levels, detected_patterns, today, smc_result)
 
     def connect_ibkr(self):
         """Connecte à Interactive Brokers"""
