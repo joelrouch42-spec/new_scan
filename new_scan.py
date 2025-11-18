@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
@@ -9,12 +9,13 @@ import argparse
 import plotly.graph_objects as go
 from smc_analyzer import SMCAnalyzer
 import logging
+import yfinance as yf
 
 # Désactiver les logs ib_insync
 logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None):
+    def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None, force_yahoo=False):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -29,6 +30,7 @@ class StockScanner:
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
         self.chart_symbol = chart_symbol
+        self.force_yahoo = force_yahoo
 
 
     def get_data_filename(self, symbol, candle_nb, interval, date):
@@ -148,6 +150,50 @@ class StockScanner:
 
         except Exception as e:
             # Silencieux pour les erreurs IBKR (connexion refusée, etc.)
+            return None
+
+
+    def download_yahoo_data(self, symbol, candle_nb, interval):
+        """Télécharge les données depuis Yahoo Finance"""
+        try:
+            ticker = yf.Ticker(symbol)
+
+            # Calculer la période nécessaire avec marge de sécurité
+            if interval == '1d':
+                days_needed = int(candle_nb * 1.6)  # Marge pour weekends/jours fériés
+            elif interval == '1h':
+                days_needed = int(candle_nb / 6.5)  # ~6.5h de trading par jour
+            elif interval == '1wk':
+                days_needed = candle_nb * 7 * 2
+            else:
+                days_needed = candle_nb * 2  # Marge par défaut
+
+            end_date = datetime.now(ZoneInfo('America/New_York'))
+            start_date = end_date - timedelta(days=days_needed)
+
+            df = ticker.history(start=start_date, end=end_date, interval=interval)
+
+            if df.empty:
+                return None
+
+            # Validation: vérifier les colonnes requises
+            required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return None
+
+            # Prendre les N dernières bougies
+            df = df.tail(candle_nb)
+
+            df.reset_index(inplace=True)
+
+            # Vérifier que Date existe après reset_index
+            if 'Date' not in df.columns:
+                return None
+
+            df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
+            return df
+        except Exception as e:
             return None
 
 
@@ -310,7 +356,10 @@ class StockScanner:
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
             else:
-                df = self.download_ibkr_data(symbol, total_candles_needed, interval)
+                if self.force_yahoo:
+                    df = self.download_yahoo_data(symbol, total_candles_needed, interval)
+                else:
+                    df = self.download_ibkr_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
@@ -383,7 +432,10 @@ class StockScanner:
                     filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
                     # Télécharge les données fraîches (pas de cache en realtime)
-                    df = self.download_ibkr_data(symbol, candle_nb, interval)
+                    if self.force_yahoo:
+                        df = self.download_yahoo_data(symbol, candle_nb, interval)
+                    else:
+                        df = self.download_ibkr_data(symbol, candle_nb, interval)
                     if df is not None:
                         df.to_csv(filename, index=False)
                     else:
@@ -445,7 +497,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
+    parser.add_argument('--yahoo', action='store_true', help='Force l\'utilisation de Yahoo Finance au lieu de IBKR')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, force_yahoo=args.yahoo)
     scanner.run()
