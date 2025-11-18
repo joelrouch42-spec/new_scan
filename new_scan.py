@@ -537,52 +537,19 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
             alert_triggered = False
 
-            # Analyser SMC si activé
-            if self.smc_analyzer:
-                smc_result = self.smc_analyzer.analyze(df)
-                bullish_obs = smc_result['order_blocks']['bullish']
-                bearish_obs = smc_result['order_blocks']['bearish']
-
-                print(f"{symbol}: {len(bullish_obs)} OB bullish, {len(bearish_obs)} OB bearish détectés")
-
-                # Vérifier si le prix touche une zone bullish
-                for ob in bullish_obs:
-                    if ob['low'] <= current_price <= ob['high']:
-                        print(f"  🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                        alert_triggered = True
-                        break
-
-                # Vérifier si le prix touche une zone bearish
-                if not alert_triggered:
-                    for ob in bearish_obs:
-                        if ob['low'] <= current_price <= ob['high']:
-                            print(f"  🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                            alert_triggered = True
-                            break
-
-            # Analyser S/R si activé
-            if self.sr_analyzer:
-                sr_result = self.sr_analyzer.analyze(df)
-                support_count = len(sr_result['support_levels'])
-                resistance_count = len(sr_result['resistance_levels'])
-
-                if support_count > 0 or resistance_count > 0:
-                    # Afficher le dernier niveau de chaque type
-                    last_support = sr_result['support_levels'][-1]['level'] if support_count > 0 else None
-                    last_resistance = sr_result['resistance_levels'][-1]['level'] if resistance_count > 0 else None
-                    support_str = f"{last_support:.2f}" if last_support else 'N/A'
-                    resistance_str = f"{last_resistance:.2f}" if last_resistance else 'N/A'
-                    print(f"{symbol}: S={support_str}, R={resistance_str} ({support_count} S, {resistance_count} R)")
-
-                # Alertes pour cassures S/R
-                for break_info in sr_result['breaks']:
-                    if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
-                        print(f"  ⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
+            # Alertes MACD uniquement (croisements sur la dernière bougie)
+            if self.macd_analyzer:
+                macd_result = self.macd_analyzer.analyze(df)
+                for cross in macd_result['crossovers']:
+                    if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
+                        if cross['type'] == 'bullish':
+                            print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
+                        else:
+                            print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                         alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
             if self.chart_symbol or alert_triggered:
-                print(f">>> Génération graphique pour {symbol} (chart_symbol={self.chart_symbol})...")
                 self.generate_chart(symbol, df)
 
 
@@ -630,34 +597,15 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Analyse SMC si activé
-                    if self.smc_analyzer:
-                        smc_result = self.smc_analyzer.analyze(df)
-                        bullish_obs = smc_result['order_blocks']['bullish']
-                        bearish_obs = smc_result['order_blocks']['bearish']
-
-                        # Vérifier si le prix touche une zone bleue (Bullish OB)
-                        for ob in bullish_obs:
-                            if ob['low'] <= current_price <= ob['high']:
-                                print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                                alert_triggered = True
-                                break
-
-                        # Vérifier si le prix touche une zone rouge (Bearish OB)
-                        if not alert_triggered:
-                            for ob in bearish_obs:
-                                if ob['low'] <= current_price <= ob['high']:
-                                    print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                                    alert_triggered = True
-                                    break
-
-                    # Analyse S/R si activé
-                    if self.sr_analyzer:
-                        sr_result = self.sr_analyzer.analyze(df)
-                        # Alertes pour cassures S/R
-                        for break_info in sr_result['breaks']:
-                            if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
-                                print(f"⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
+                    # Alertes MACD uniquement (croisements sur la dernière bougie)
+                    if self.macd_analyzer:
+                        macd_result = self.macd_analyzer.analyze(df)
+                        for cross in macd_result['crossovers']:
+                            if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
+                                if cross['type'] == 'bullish':
+                                    print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
+                                else:
+                                    print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                                 alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
