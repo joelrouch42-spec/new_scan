@@ -27,6 +27,12 @@
       "right_bars": 15,
       "volume_threshold": 20,
       "show_breaks": true
+    },
+    "macd": {
+      "enabled": true,
+      "fast_length": 12,
+      "slow_length": 26,
+      "signal_length": 9
     }
   }
 }

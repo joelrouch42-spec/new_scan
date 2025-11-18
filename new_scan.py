@@ -34,6 +34,12 @@ class StockScanner:
             sr_config = self.indicators_config['support_resistance']
             self.sr_analyzer = SRLevelsAnalyzer(sr_config)
 
+        self.macd_analyzer = None
+        if self.indicators_config.get('macd', {}).get('enabled', False):
+            from macd_analyzer import MACDAnalyzer
+            macd_config = self.indicators_config['macd']
+            self.macd_analyzer = MACDAnalyzer(macd_config)
+
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
@@ -395,6 +401,31 @@ class StockScanner:
                 )
 
             title_parts.append('S/R Levels')
+
+        # Ajouter MACD crossovers si activé
+        if self.macd_analyzer:
+            macd_result = self.macd_analyzer.analyze(df)
+
+            # Ajouter des X rouges aux croisements
+            for cross in macd_result['crossovers']:
+                idx = cross['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+
+                fig.add_trace(go.Scatter(
+                    x=[date],
+                    y=[cross['price']],
+                    mode='markers',
+                    marker=dict(
+                        size=15,
+                        color='red',
+                        symbol='x',
+                        line=dict(width=2, color='red')
+                    ),
+                    name='MACD Cross',
+                    showlegend=False
+                ))
+
+            title_parts.append(f'MACD ({len(macd_result["crossovers"])} crosses)')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
