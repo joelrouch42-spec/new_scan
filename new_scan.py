@@ -15,16 +15,24 @@ import yfinance as yf
 logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, patterns_file='patterns.json', chart_symbol=None, force_yahoo=False):
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, force_yahoo=False):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
-        with open(patterns_file, 'r') as f:
-            self.patterns_config = json.load(f)
+        # Récupérer les indicateurs depuis settings
+        self.indicators_config = self.settings.get('indicators', {})
 
-        # Initialiser le SMC Analyzer
-        smc_config = self.patterns_config['smc']
-        self.smc_analyzer = SMCAnalyzer(smc_config)
+        # Initialiser les analyzers selon les indicateurs activés
+        self.smc_analyzer = None
+        if self.indicators_config.get('smc', {}).get('enabled', False):
+            smc_config = self.indicators_config['smc']
+            self.smc_analyzer = SMCAnalyzer(smc_config)
+
+        self.sr_analyzer = None
+        if self.indicators_config.get('support_resistance', {}).get('enabled', False):
+            from sr_levels_analyzer import SRLevelsAnalyzer
+            sr_config = self.indicators_config['support_resistance']
+            self.sr_analyzer = SRLevelsAnalyzer(sr_config)
 
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
@@ -198,12 +206,7 @@ class StockScanner:
 
 
     def generate_chart(self, symbol, df):
-        """Génère un graphique HTML avec les Order Blocks"""
-        # Analyse SMC
-        smc_result = self.smc_analyzer.analyze(df)
-        bullish_obs = smc_result['order_blocks']['bullish']
-        bearish_obs = smc_result['order_blocks']['bearish']
-
+        """Génère un graphique HTML avec les indicateurs activés"""
         # Créer le dossier chart s'il n'existe pas
         chart_folder = 'chart'
         os.makedirs(chart_folder, exist_ok=True)
@@ -221,71 +224,174 @@ class StockScanner:
             name='Price'
         ))
 
-        # Ajouter les zones BLEUES (Bullish Order Blocks)
-        for ob in bullish_obs:
-            idx = ob['index']
-            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-            end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
+        title_parts = [symbol]
+        bullish_count = 0
+        bearish_count = 0
 
-            # Zone rectangulaire qui s'étend jusqu'à la fin
-            fig.add_shape(
-                type="rect",
-                x0=date,
-                x1=end_date,
-                y0=ob['low'],
-                y1=ob['high'],
-                fillcolor="blue",
-                opacity=0.2,
-                layer="below",
-                line_width=0,
-            )
+        # Ajouter SMC si activé
+        if self.smc_analyzer:
+            smc_result = self.smc_analyzer.analyze(df)
+            bullish_obs = smc_result['order_blocks']['bullish']
+            bearish_obs = smc_result['order_blocks']['bearish']
+            bullish_count = len(bullish_obs)
+            bearish_count = len(bearish_obs)
 
-            # Label des prix à droite
-            mid_price = (ob['low'] + ob['high']) / 2
-            fig.add_annotation(
-                x=end_date,
-                y=mid_price,
-                text=f"{ob['low']:.2f}-{ob['high']:.2f}",
-                showarrow=False,
-                xanchor="left",
-                font=dict(color="white", size=14),
-                bgcolor="rgba(0,0,255,0.3)"
-            )
+            # Ajouter les zones BLEUES (Bullish Order Blocks)
+            for ob in bullish_obs:
+                idx = ob['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+                end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
 
-        # Ajouter les zones ROUGES (Bearish Order Blocks)
-        for ob in bearish_obs:
-            idx = ob['index']
-            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-            end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
+                # Zone rectangulaire qui s'étend jusqu'à la fin
+                fig.add_shape(
+                    type="rect",
+                    x0=date,
+                    x1=end_date,
+                    y0=ob['low'],
+                    y1=ob['high'],
+                    fillcolor="blue",
+                    opacity=0.2,
+                    layer="below",
+                    line_width=0,
+                )
 
-            # Zone rectangulaire qui s'étend jusqu'à la fin
-            fig.add_shape(
-                type="rect",
-                x0=date,
-                x1=end_date,
-                y0=ob['low'],
-                y1=ob['high'],
-                fillcolor="red",
-                opacity=0.2,
-                layer="below",
-                line_width=0,
-            )
+                # Label des prix à droite
+                mid_price = (ob['low'] + ob['high']) / 2
+                fig.add_annotation(
+                    x=end_date,
+                    y=mid_price,
+                    text=f"{ob['low']:.2f}-{ob['high']:.2f}",
+                    showarrow=False,
+                    xanchor="left",
+                    font=dict(color="white", size=14),
+                    bgcolor="rgba(0,0,255,0.3)"
+                )
 
-            # Label des prix à droite
-            mid_price = (ob['low'] + ob['high']) / 2
-            fig.add_annotation(
-                x=end_date,
-                y=mid_price,
-                text=f"{ob['low']:.2f}-{ob['high']:.2f}",
-                showarrow=False,
-                xanchor="left",
-                font=dict(color="red", size=14),
-                bgcolor="rgba(0,0,0,0.5)"
-            )
+            # Ajouter les zones ROUGES (Bearish Order Blocks)
+            for ob in bearish_obs:
+                idx = ob['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+                end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
+
+                # Zone rectangulaire qui s'étend jusqu'à la fin
+                fig.add_shape(
+                    type="rect",
+                    x0=date,
+                    x1=end_date,
+                    y0=ob['low'],
+                    y1=ob['high'],
+                    fillcolor="red",
+                    opacity=0.2,
+                    layer="below",
+                    line_width=0,
+                )
+
+                # Label des prix à droite
+                mid_price = (ob['low'] + ob['high']) / 2
+                fig.add_annotation(
+                    x=end_date,
+                    y=mid_price,
+                    text=f"{ob['low']:.2f}-{ob['high']:.2f}",
+                    showarrow=False,
+                    xanchor="left",
+                    font=dict(color="red", size=14),
+                    bgcolor="rgba(0,0,0,0.5)"
+                )
+
+            title_parts.append(f'OB (Bullish={bullish_count}, Bearish={bearish_count})')
+
+        # Ajouter S/R si activé
+        if self.sr_analyzer:
+            sr_result = self.sr_analyzer.analyze(df)
+
+            # Ajouter ligne de résistance (rouge)
+            if sr_result['resistance'] is not None:
+                fig.add_shape(
+                    type="line",
+                    x0=0,
+                    x1=1,
+                    xref="paper",
+                    y0=sr_result['resistance'],
+                    y1=sr_result['resistance'],
+                    line=dict(color="red", width=2, dash="solid")
+                )
+                fig.add_annotation(
+                    x=1,
+                    xref="paper",
+                    y=sr_result['resistance'],
+                    text=f"R: ${sr_result['resistance']:.2f}",
+                    showarrow=False,
+                    xanchor="left",
+                    font=dict(color="red", size=12),
+                    bgcolor="rgba(255,0,0,0.3)"
+                )
+
+            # Ajouter ligne de support (vert)
+            if sr_result['support'] is not None:
+                fig.add_shape(
+                    type="line",
+                    x0=0,
+                    x1=1,
+                    xref="paper",
+                    y0=sr_result['support'],
+                    y1=sr_result['support'],
+                    line=dict(color="green", width=2, dash="solid")
+                )
+                fig.add_annotation(
+                    x=1,
+                    xref="paper",
+                    y=sr_result['support'],
+                    text=f"S: ${sr_result['support']:.2f}",
+                    showarrow=False,
+                    xanchor="left",
+                    font=dict(color="green", size=12),
+                    bgcolor="rgba(0,255,0,0.3)"
+                )
+
+            # Ajouter les marqueurs de cassures
+            for break_info in sr_result['breaks']:
+                idx = break_info['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+
+                # Couleur et symbole selon le type
+                if break_info['type'] == 'support_break':
+                    color = 'red'
+                    symbol = 'triangle-down'
+                    text = '⬇️ S Break'
+                elif break_info['type'] == 'resistance_break':
+                    color = 'green'
+                    symbol = 'triangle-up'
+                    text = '⬆️ R Break'
+                elif break_info['type'] == 'bear_wick':
+                    color = 'orange'
+                    symbol = 'x'
+                    text = '🕯️ Bear Wick'
+                elif break_info['type'] == 'bull_wick':
+                    color = 'lightgreen'
+                    symbol = 'x'
+                    text = '🕯️ Bull Wick'
+                else:
+                    color = 'white'
+                    symbol = 'circle'
+                    text = break_info['description']
+
+                fig.add_trace(go.Scatter(
+                    x=[date],
+                    y=[break_info['price']],
+                    mode='markers+text',
+                    marker=dict(size=12, color=color, symbol=symbol),
+                    text=text,
+                    textposition='top center',
+                    name=break_info['description'],
+                    showlegend=False
+                ))
+
+            title_parts.append('S/R Levels')
 
         # Mise en forme
+        chart_title = f"{' - '.join(title_parts)}"
         fig.update_layout(
-            title=f'{symbol} - Order Blocks (Bullish=Bleu, Bearish=Rouge)',
+            title=chart_title,
             yaxis_title='Prix',
             xaxis_title='Date',
             template='plotly_dark',
@@ -316,11 +422,18 @@ class StockScanner:
         )
 
         # Sauvegarder dans le dossier chart
-        filename = os.path.join(chart_folder, f'{symbol}_order_blocks.html')
+        filename = os.path.join(chart_folder, f'{symbol}_indicators.html')
         fig.write_html(filename)
-        print(f"{symbol}: 📊 Order Blocks détectés → {filename}")
-        print(f"  Bullish OB (bleu): {len(bullish_obs)}")
-        print(f"  Bearish OB (rouge): {len(bearish_obs)}")
+        print(f"{symbol}: 📊 Chart généré → {filename}")
+
+        # Afficher les indicateurs actifs
+        if self.smc_analyzer and bullish_count > 0 or bearish_count > 0:
+            print(f"  SMC: Bullish OB (bleu)={bullish_count}, Bearish OB (rouge)={bearish_count}")
+
+        if self.sr_analyzer:
+            sr_result = self.sr_analyzer.analyze(df)
+            if sr_result['support'] or sr_result['resistance']:
+                print(f"  S/R: Support={sr_result['support']:.2f if sr_result['support'] else 'N/A'}, Resistance={sr_result['resistance']:.2f if sr_result['resistance'] else 'N/A'}")
 
         return filename
 
@@ -368,32 +481,44 @@ class StockScanner:
             if df is None or len(df) == 0:
                 continue
 
-            # Analyser SMC pour voir si le prix touche un Order Block
-            smc_result = self.smc_analyzer.analyze(df)
-            bullish_obs = smc_result['order_blocks']['bullish']
-            bearish_obs = smc_result['order_blocks']['bearish']
-
-            # Debug: afficher le nombre d'OB détectés
-            print(f"{symbol}: {len(bullish_obs)} OB bullish, {len(bearish_obs)} OB bearish détectés")
-
             # Prix actuel
             current_price = df.iloc[-1]['Close']
-
-            # Vérifier si le prix touche une zone bullish
             alert_triggered = False
-            for ob in bullish_obs:
-                if ob['low'] <= current_price <= ob['high']:
-                    print(f"  🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                    alert_triggered = True
-                    break
 
-            # Vérifier si le prix touche une zone bearish
-            if not alert_triggered:
-                for ob in bearish_obs:
+            # Analyser SMC si activé
+            if self.smc_analyzer:
+                smc_result = self.smc_analyzer.analyze(df)
+                bullish_obs = smc_result['order_blocks']['bullish']
+                bearish_obs = smc_result['order_blocks']['bearish']
+
+                print(f"{symbol}: {len(bullish_obs)} OB bullish, {len(bearish_obs)} OB bearish détectés")
+
+                # Vérifier si le prix touche une zone bullish
+                for ob in bullish_obs:
                     if ob['low'] <= current_price <= ob['high']:
-                        print(f"  🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                        print(f"  🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
                         alert_triggered = True
                         break
+
+                # Vérifier si le prix touche une zone bearish
+                if not alert_triggered:
+                    for ob in bearish_obs:
+                        if ob['low'] <= current_price <= ob['high']:
+                            print(f"  🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                            alert_triggered = True
+                            break
+
+            # Analyser S/R si activé
+            if self.sr_analyzer:
+                sr_result = self.sr_analyzer.analyze(df)
+                if sr_result['support'] or sr_result['resistance']:
+                    print(f"{symbol}: Support={sr_result['support']:.2f if sr_result['support'] else 'N/A'}, Resistance={sr_result['resistance']:.2f if sr_result['resistance'] else 'N/A'}")
+
+                    # Alertes pour cassures S/R
+                    for break_info in sr_result['breaks']:
+                        if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
+                            print(f"  ⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
+                            alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
             if self.chart_symbol or alert_triggered:
@@ -444,29 +569,39 @@ class StockScanner:
                     if df is None or len(df) == 0:
                         continue
 
-                    # Analyse SMC
-                    smc_result = self.smc_analyzer.analyze(df)
-                    bullish_obs = smc_result['order_blocks']['bullish']
-                    bearish_obs = smc_result['order_blocks']['bearish']
-
                     # Prix actuel
                     current_price = df.iloc[-1]['Close']
-
-                    # Vérifier si le prix touche une zone bleue (Bullish OB)
                     alert_triggered = False
-                    for ob in bullish_obs:
-                        if ob['low'] <= current_price <= ob['high']:
-                            print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
-                            alert_triggered = True
-                            break
 
-                    # Vérifier si le prix touche une zone rouge (Bearish OB)
-                    if not alert_triggered:
-                        for ob in bearish_obs:
+                    # Analyse SMC si activé
+                    if self.smc_analyzer:
+                        smc_result = self.smc_analyzer.analyze(df)
+                        bullish_obs = smc_result['order_blocks']['bullish']
+                        bearish_obs = smc_result['order_blocks']['bearish']
+
+                        # Vérifier si le prix touche une zone bleue (Bullish OB)
+                        for ob in bullish_obs:
                             if ob['low'] <= current_price <= ob['high']:
-                                print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                                print(f"🔵 {symbol} @ ${current_price:.2f} touche zone BLEUE [{ob['low']:.2f}-{ob['high']:.2f}]")
                                 alert_triggered = True
                                 break
+
+                        # Vérifier si le prix touche une zone rouge (Bearish OB)
+                        if not alert_triggered:
+                            for ob in bearish_obs:
+                                if ob['low'] <= current_price <= ob['high']:
+                                    print(f"🔴 {symbol} @ ${current_price:.2f} touche zone ROUGE [{ob['low']:.2f}-{ob['high']:.2f}]")
+                                    alert_triggered = True
+                                    break
+
+                    # Analyse S/R si activé
+                    if self.sr_analyzer:
+                        sr_result = self.sr_analyzer.analyze(df)
+                        # Alertes pour cassures S/R
+                        for break_info in sr_result['breaks']:
+                            if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
+                                print(f"⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
+                                alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
                     if alert_triggered:

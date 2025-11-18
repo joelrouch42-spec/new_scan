@@ -14,5 +14,19 @@
     "ibkr_host": "127.0.0.1",
     "ibkr_port": 4001,
     "ibkr_client_id": 2
+  },
+  "indicators": {
+    "smc": {
+      "enabled": true,
+      "zigzag_length": 9,
+      "fib_factor": 0.33
+    },
+    "support_resistance": {
+      "enabled": true,
+      "left_bars": 15,
+      "right_bars": 15,
+      "volume_threshold": 20,
+      "show_breaks": true
+    }
   }
 }
