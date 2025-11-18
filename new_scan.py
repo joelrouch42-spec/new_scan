@@ -18,9 +18,11 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 warnings.filterwarnings('ignore')
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, chart_symbol=None):
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, use_crypto=False):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
+
+        self.use_crypto = use_crypto
 
         # Récupérer les indicateurs depuis settings
         self.indicators_config = self.settings.get('indicators', {})
@@ -75,6 +77,22 @@ class StockScanner:
             'TEAM', 'ALGN', 'CTAS', 'DLTR', 'SMCI', 'ARM', 'COIN', 'APP', 'HOOD', 'RIVN'
         ]
         return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
+
+    def get_crypto_symbols(self):
+        """Retourne la liste des principales cryptos (Top 100 par market cap)"""
+        symbols = [
+            'BTC-USD', 'ETH-USD', 'USDT-USD', 'BNB-USD', 'SOL-USD', 'USDC-USD', 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'TRX-USD',
+            'AVAX-USD', 'SHIB-USD', 'TON11419-USD', 'LINK-USD', 'DOT-USD', 'MATIC-USD', 'ICP-USD', 'UNI7083-USD', 'LTC-USD', 'BCH-USD',
+            'NEAR-USD', 'DAI-USD', 'APT21794-USD', 'LEO-USD', 'FET-USD', 'STX4847-USD', 'IMX10603-USD', 'XLM-USD', 'HBAR-USD', 'CRO-USD',
+            'OP-USD', 'INJ-USD', 'ARB11841-USD', 'FIL-USD', 'MNT27075-USD', 'VET-USD', 'ATOM-USD', 'MKR-USD', 'RUNE-USD', 'GRT6719-USD',
+            'ALGO-USD', 'THETA-USD', 'SAND-USD', 'AAVE-USD', 'FTM-USD', 'XTZ-USD', 'EOS-USD', 'MANA-USD', 'AXS-USD', 'EGLD-USD',
+            'FLOW-USD', 'KLAY-USD', 'ZEC-USD', 'XMR-USD', 'BSV-USD', 'CAKE-USD', 'CHZ-USD', 'QNT-USD', 'GALA-USD', 'ENJ-USD',
+            'BAT-USD', 'LRC-USD', '1INCH-USD', 'COMP-USD', 'ZIL-USD', 'CRV-USD', 'WAVES-USD', 'ZRX-USD', 'QTUM-USD', 'HOT-USD',
+            'ICX-USD', 'OMG-USD', 'IOTA-USD', 'ONT-USD', 'ZEN-USD', 'DGB-USD', 'SC-USD', 'RVN-USD', 'DCR-USD', 'BTG-USD',
+            'LSK-USD', 'KMD-USD', 'ARK-USD', 'STRAT-USD', 'XEM-USD', 'BTS-USD', 'STEEM-USD', 'GNO-USD', 'REP-USD', 'POLY-USD',
+            'KNC-USD', 'SNT-USD', 'RLC-USD', 'ANT-USD', 'NMR-USD', 'MLN-USD', 'STORJ-USD', 'CVC-USD', 'FUN-USD', 'POWR-USD'
+        ]
+        return [{'symbol': s, 'provider': 'Yahoo'} for s in symbols]
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
@@ -511,15 +529,19 @@ class StockScanner:
 
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
-            watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
+            watchlist = [{'symbol': self.chart_symbol, 'provider': 'Yahoo'}]
         else:
-            # Scanner tous les stocks NASDAQ 100
-            watchlist = self.get_nasdaq100_symbols()
+            # Scanner crypto ou NASDAQ 100
+            if self.use_crypto:
+                watchlist = self.get_crypto_symbols()
+            else:
+                watchlist = self.get_nasdaq100_symbols()
 
         # Utiliser l'intervalle de scan du mode realtime
         update_interval = self.settings['realtime']['update_interval_seconds']
 
-        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
+        market_name = "Crypto" if self.use_crypto else "NASDAQ 100"
+        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles {market_name} toutes les {update_interval}s")
         print("Appuyez sur Ctrl+C pour arrêter\n")
 
         while True:
@@ -578,7 +600,7 @@ class StockScanner:
 
 
     def run_realtime(self):
-        """Execute le mode realtime avec alertes sur NASDAQ 100"""
+        """Execute le mode realtime avec alertes"""
         import time
 
         realtime_config = self.settings['realtime']
@@ -589,10 +611,15 @@ class StockScanner:
         # Créer le dossier data
         os.makedirs(self.data_folder, exist_ok=True)
 
-        # Scanne NASDAQ 100
-        watchlist = self.get_nasdaq100_symbols()
+        # Scanner crypto ou NASDAQ 100
+        if self.use_crypto:
+            watchlist = self.get_crypto_symbols()
+            market_name = "Crypto"
+        else:
+            watchlist = self.get_nasdaq100_symbols()
+            market_name = "NASDAQ 100"
 
-        print(f"Scanner realtime démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
+        print(f"Scanner realtime démarré - scanne {len(watchlist)} symboles {market_name} toutes les {update_interval}s")
         print("Appuyez sur Ctrl+C pour arrêter\n")
 
         while True:
@@ -607,8 +634,13 @@ class StockScanner:
                     symbol = item['symbol']
                     filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
-                    # Télécharge les données fraîches (realtime = toujours IBKR)
-                    df = self.download_ibkr_data(symbol, candle_nb, interval)
+                    # Télécharge les données fraîches
+                    # Crypto = Yahoo Finance, Actions = IBKR
+                    if self.use_crypto:
+                        df = self.download_yahoo_data(symbol, candle_nb, interval)
+                    else:
+                        df = self.download_ibkr_data(symbol, candle_nb, interval)
+
                     if df is not None:
                         df.to_csv(filename, index=False)
                     else:
@@ -661,7 +693,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
+    parser.add_argument('--crypto', action='store_true', help='Scanne les cryptos au lieu du NASDAQ 100')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, use_crypto=args.crypto)
     scanner.run()
