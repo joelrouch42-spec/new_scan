@@ -53,12 +53,6 @@ class MACDAnalyzer:
         crossovers = self._detect_crossovers(df, macd, signal)
         result['crossovers'] = crossovers
 
-        print(f"DEBUG MACD: {len(crossovers)} crossovers détectés")
-        if len(crossovers) > 0:
-            print(f"  Premier: index={crossovers[0]['index']}, type={crossovers[0]['type']}, price={crossovers[0]['price']:.2f}")
-        print(f"  MACD range: {macd[macd != 0].min():.4f} to {macd.max():.4f}")
-        print(f"  Signal range: {signal[signal != 0].min():.4f} to {signal.max():.4f}")
-
         return result
 
 

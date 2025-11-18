@@ -405,22 +405,35 @@ class StockScanner:
         # Ajouter MACD crossovers si activé
         if self.macd_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
-            print(f"DEBUG: MACD détecté {len(macd_result['crossovers'])} croisements")
 
-            # Ajouter des X rouges aux croisements
+            # Ajouter des flèches aux croisements
             for cross in macd_result['crossovers']:
                 idx = cross['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
+                if cross['type'] == 'bullish':
+                    # Flèche bleue vers le haut EN DESSOUS de la bougie
+                    color = 'blue'
+                    symbol = 'triangle-up'
+                    y_offset = -0.015  # Décalage vers le bas en % du prix
+                else:
+                    # Flèche rouge vers le bas AU-DESSUS de la bougie
+                    color = 'red'
+                    symbol = 'triangle-down'
+                    y_offset = 0.015  # Décalage vers le haut en % du prix
+
+                # Calculer la position Y de la flèche
+                arrow_y = cross['price'] * (1 + y_offset)
+
                 fig.add_trace(go.Scatter(
                     x=[date],
-                    y=[cross['price']],
+                    y=[arrow_y],
                     mode='markers',
                     marker=dict(
-                        size=15,
-                        color='red',
-                        symbol='x',
-                        line=dict(width=2, color='red')
+                        size=12,
+                        color=color,
+                        symbol=symbol,
+                        line=dict(width=1, color=color)
                     ),
                     name='MACD Cross',
                     showlegend=False
