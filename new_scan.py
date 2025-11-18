@@ -495,6 +495,8 @@ class StockScanner:
 
     def run_backtest(self):
         """Execute le mode backtest"""
+        import time
+
         backtest_config = self.settings['backtest']
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
@@ -514,43 +516,65 @@ class StockScanner:
             # Scanner tous les stocks NASDAQ 100
             watchlist = self.get_nasdaq100_symbols()
 
-        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+        # Utiliser l'intervalle de scan du mode realtime
+        update_interval = self.settings['realtime']['update_interval_seconds']
 
-        for item in watchlist:
-            symbol = item['symbol']
-            filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
+        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
+        print("Appuyez sur Ctrl+C pour arrêter\n")
 
-            # Télécharge ou charge les données (backtest = toujours Yahoo)
-            if self.check_file_exists(filename):
-                df = pd.read_csv(filename)
-            else:
-                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
-                if df is not None:
-                    df.to_csv(filename, index=False)
-                else:
-                    continue
+        while True:
+            try:
+                now = datetime.now(ZoneInfo('America/New_York'))
+                today = now.strftime('%Y-%m-%d')
+                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
 
-            if df is None or len(df) == 0:
-                continue
+                print(f"=== Scan {timestamp} ===")
 
-            # Prix actuel
-            current_price = df.iloc[-1]['Close']
-            alert_triggered = False
+                for item in watchlist:
+                    symbol = item['symbol']
+                    filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
-            # Alertes MACD uniquement (croisements sur la dernière bougie)
-            if self.macd_analyzer:
-                macd_result = self.macd_analyzer.analyze(df)
-                for cross in macd_result['crossovers']:
-                    if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
-                        if cross['type'] == 'bullish':
-                            print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
+                    # Télécharge ou charge les données (backtest = toujours Yahoo)
+                    if self.check_file_exists(filename):
+                        df = pd.read_csv(filename)
+                    else:
+                        df = self.download_yahoo_data(symbol, total_candles_needed, interval)
+                        if df is not None:
+                            df.to_csv(filename, index=False)
                         else:
-                            print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
-                        alert_triggered = True
+                            continue
 
-            # Générer le graphique si --chart spécifié OU si alerte déclenchée
-            if self.chart_symbol or alert_triggered:
-                self.generate_chart(symbol, df)
+                    if df is None or len(df) == 0:
+                        continue
+
+                    # Prix actuel
+                    current_price = df.iloc[-1]['Close']
+                    alert_triggered = False
+
+                    # Alertes MACD uniquement (croisements sur la dernière bougie)
+                    if self.macd_analyzer:
+                        macd_result = self.macd_analyzer.analyze(df)
+                        for cross in macd_result['crossovers']:
+                            if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
+                                if cross['type'] == 'bullish':
+                                    print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
+                                else:
+                                    print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
+                                alert_triggered = True
+
+                    # Générer le graphique si --chart spécifié OU si alerte déclenchée
+                    if self.chart_symbol or alert_triggered:
+                        self.generate_chart(symbol, df)
+
+                print(f"Prochain scan dans {update_interval}s...\n")
+                time.sleep(update_interval)
+
+            except KeyboardInterrupt:
+                print("\nScanner arrêté par l'utilisateur")
+                break
+            except Exception as e:
+                print(f"Erreur: {e}")
+                time.sleep(update_interval)
 
 
     def run_realtime(self):
