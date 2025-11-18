@@ -82,25 +82,40 @@ class StockScanner:
             'PAYX', 'KDP', 'FAST', 'ODFL', 'BKR', 'EA', 'CTSH', 'VRSK', 'DXCM', 'AZN',
             'KHC', 'GEHC', 'LULU', 'IDXX', 'EXC', 'CSGP', 'XEL', 'ON', 'TTWO', 'ANSS',
             'FANG', 'BIIB', 'ZS', 'DDOG', 'CDW', 'GFS', 'ILMN', 'WBD', 'MRNA', 'MDB',
-            'TEAM', 'ALGN', 'CTAS', 'DLTR', 'SMCI', 'ARM', 'COIN', 'APP', 'HOOD', 'RIVN'
+            'TEAM', 'ALGN', 'CTAS', 'DLTR', 'SMCI', 'ARM', 'APP', 'RIVN'
         ]
         return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
 
     def get_crypto_symbols(self):
-        """Retourne la liste des principales cryptos (Top 100 par market cap)"""
+        """Retourne la liste des actions liées aux cryptos"""
         symbols = [
-            'BTC-USD', 'ETH-USD', 'USDT-USD', 'BNB-USD', 'SOL-USD', 'USDC-USD', 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'TRX-USD',
-            'AVAX-USD', 'SHIB-USD', 'TON11419-USD', 'LINK-USD', 'DOT-USD', 'MATIC-USD', 'ICP-USD', 'UNI7083-USD', 'LTC-USD', 'BCH-USD',
-            'NEAR-USD', 'DAI-USD', 'APT21794-USD', 'LEO-USD', 'FET-USD', 'STX4847-USD', 'IMX10603-USD', 'XLM-USD', 'HBAR-USD', 'CRO-USD',
-            'OP-USD', 'INJ-USD', 'ARB11841-USD', 'FIL-USD', 'MNT27075-USD', 'VET-USD', 'ATOM-USD', 'MKR-USD', 'RUNE-USD', 'GRT6719-USD',
-            'ALGO-USD', 'THETA-USD', 'SAND-USD', 'AAVE-USD', 'FTM-USD', 'XTZ-USD', 'EOS-USD', 'MANA-USD', 'AXS-USD', 'EGLD-USD',
-            'FLOW-USD', 'KLAY-USD', 'ZEC-USD', 'XMR-USD', 'BSV-USD', 'CAKE-USD', 'CHZ-USD', 'QNT-USD', 'GALA-USD', 'ENJ-USD',
-            'BAT-USD', 'LRC-USD', '1INCH-USD', 'COMP-USD', 'ZIL-USD', 'CRV-USD', 'WAVES-USD', 'ZRX-USD', 'QTUM-USD', 'HOT-USD',
-            'ICX-USD', 'OMG-USD', 'IOTA-USD', 'ONT-USD', 'ZEN-USD', 'DGB-USD', 'SC-USD', 'RVN-USD', 'DCR-USD', 'BTG-USD',
-            'LSK-USD', 'KMD-USD', 'ARK-USD', 'STRAT-USD', 'XEM-USD', 'BTS-USD', 'STEEM-USD', 'GNO-USD', 'REP-USD', 'POLY-USD',
-            'KNC-USD', 'SNT-USD', 'RLC-USD', 'ANT-USD', 'NMR-USD', 'MLN-USD', 'STORJ-USD', 'CVC-USD', 'FUN-USD', 'POWR-USD'
+            # Exchanges crypto
+            'COIN',     # Coinbase
+            'HOOD',     # Robinhood
+
+            # Mining & Holders
+            'MSTR',     # MicroStrategy (Bitcoin holder)
+            'MARA',     # Marathon Digital Holdings
+            'RIOT',     # Riot Platforms
+            'CLSK',     # CleanSpark
+            'HUT',      # Hut 8 Mining
+            'BITF',     # Bitfarms
+            'CIFR',     # Cipher Mining
+            'BTBT',     # Bit Digital
+            'ARBK',     # Argo Blockchain
+            'WULF',     # TeraWulf
+            'IREN',     # Iris Energy
+
+            # Blockchain & Infrastructure
+            'SQ',       # Block (Square)
+            'MOGO',     # Mogo
+            'BKKT',     # Bakkt
+
+            # ETFs crypto
+            'BITO',     # ProShares Bitcoin Strategy ETF
+            'BITQ',     # Amplify Transformational Data Sharing ETF
         ]
-        return [{'symbol': s, 'provider': 'Yahoo'} for s in symbols]
+        return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
 
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
