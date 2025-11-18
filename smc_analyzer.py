@@ -139,11 +139,13 @@ class SMCAnalyzer:
         # Étape 2: Détection des Market Structure Breaks (comme PineScript)
         # Variables pour tracker market et les OB indices
         market = 1
-        last_l0_for_market = None
-        last_h0_for_market = None
+        last_l0_at_market_change = None
+        last_h0_at_market_change = None
 
         bu_ob_index = 0
         be_ob_index = 0
+
+        print(f"DEBUG: Total pivots - {len(high_points_arr)} highs, {len(low_points_arr)} lows")
 
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
@@ -173,25 +175,31 @@ class SMCAnalyzer:
                     be_ob_index = i
 
             # Évaluer market change (comme PineScript)
+            # last_l0 = ta.valuewhen(ta.change(market) != 0, l0, 0)
+            # last_h0 = ta.valuewhen(ta.change(market) != 0, h0, 0)
             # market := last_l0 == l0 or last_h0 == h0 ? market : ...
             prev_market = market
 
-            if not (last_l0_for_market == l0 or last_h0_for_market == h0):
+            # Si l0 ou h0 n'a pas changé depuis le dernier market change, ne pas réévaluer
+            if not (last_l0_at_market_change == l0 or last_h0_at_market_change == h0):
                 # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
                 if market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor:
                     market = -1
-                    last_l0_for_market = l0
-                    last_h0_for_market = h0
+                    print(f"DEBUG: MSB Bearish @ bar {bar_idx}, l0={l0:.2f}, l1={l1:.2f}, h0={h0:.2f}, be_ob_index={be_ob_index}")
                 # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
                 elif market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor:
                     market = 1
-                    last_l0_for_market = l0
-                    last_h0_for_market = h0
+                    print(f"DEBUG: MSB Bullish @ bar {bar_idx}, h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}, bu_ob_index={bu_ob_index}")
 
-            # Quand market change, créer l'OB avec l'index stocké
+            # Si market a changé, mettre à jour les valeurs de référence et créer l'OB
             if prev_market != market:
+                # Mettre à jour les valeurs au moment du changement
+                last_l0_at_market_change = l0
+                last_h0_at_market_change = h0
+
                 if market == 1:  # MSB Bullish vient de se produire
                     if bu_ob_index < len(df):
+                        print(f"  → Bullish OB créé à index {bu_ob_index}, prix {df['Low'].iloc[bu_ob_index]:.2f}-{df['High'].iloc[bu_ob_index]:.2f}")
                         bullish_obs.append({
                             'index': bu_ob_index,
                             'low': df['Low'].iloc[bu_ob_index],
@@ -202,6 +210,7 @@ class SMCAnalyzer:
 
                 if market == -1:  # MSB Bearish vient de se produire
                     if be_ob_index < len(df):
+                        print(f"  → Bearish OB créé à index {be_ob_index}, prix {df['Low'].iloc[be_ob_index]:.2f}-{df['High'].iloc[be_ob_index]:.2f}")
                         bearish_obs.append({
                             'index': be_ob_index,
                             'low': df['Low'].iloc[be_ob_index],
@@ -210,4 +219,5 @@ class SMCAnalyzer:
                             'close': df['Close'].iloc[be_ob_index]
                         })
 
+        print(f"DEBUG: Final - {len(bullish_obs)} Bullish OB, {len(bearish_obs)} Bearish OB")
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
