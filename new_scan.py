@@ -10,9 +10,12 @@ import plotly.graph_objects as go
 from smc_analyzer import SMCAnalyzer
 import logging
 import yfinance as yf
+import warnings
 
-# Désactiver les logs ib_insync
+# Désactiver les logs ib_insync et yfinance
 logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+warnings.filterwarnings('ignore')
 
 class StockScanner:
     def __init__(self, settings_file, is_backtest=False, chart_symbol=None):
@@ -167,7 +170,14 @@ class StockScanner:
 
     def download_yahoo_data(self, symbol, candle_nb, interval):
         """Télécharge les données depuis Yahoo Finance"""
+        import sys
+        from io import StringIO
+
+        old_stderr = sys.stderr
         try:
+            # Rediriger stderr pour supprimer les erreurs yfinance
+            sys.stderr = StringIO()
+
             ticker = yf.Ticker(symbol)
 
             # Calculer la période nécessaire avec marge de sécurité
@@ -207,6 +217,9 @@ class StockScanner:
             return df
         except Exception as e:
             return None
+        finally:
+            # Restaurer stderr dans tous les cas
+            sys.stderr = old_stderr
 
 
     def generate_chart(self, symbol, df):
@@ -477,19 +490,6 @@ class StockScanner:
         # Sauvegarder dans le dossier chart
         filename = os.path.join(chart_folder, f'{symbol}_indicators.html')
         fig.write_html(filename)
-        print(f"{symbol}: 📊 Chart généré → {filename}")
-
-        # Afficher les indicateurs actifs
-        if self.smc_analyzer and bullish_count > 0 or bearish_count > 0:
-            print(f"  SMC: Bullish OB (bleu)={bullish_count}, Bearish OB (rouge)={bearish_count}")
-
-        if self.sr_analyzer:
-            sr_result = self.sr_analyzer.analyze(df)
-            support_count = len(sr_result['support_levels'])
-            resistance_count = len(sr_result['resistance_levels'])
-            if support_count > 0 or resistance_count > 0:
-                print(f"  S/R: {support_count} niveaux support (bleu), {resistance_count} niveaux résistance (rouge)")
-
         return filename
 
 
