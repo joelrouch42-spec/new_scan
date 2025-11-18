@@ -137,10 +137,14 @@ class SMCAnalyzer:
             return {'bullish': [], 'bearish': []}
 
         # Étape 2: Détection des Market Structure Breaks (comme PineScript)
-        # Évaluer market à chaque bougie (pas à chaque pivot!)
+        # Variables pour tracker market et les OB indices
         market = 1
-        last_l0 = None
-        last_h0 = None
+        last_l0_for_market = None
+        last_h0_for_market = None
+
+        bu_ob_index = 0
+        be_ob_index = 0
+
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
             # Trouver les pivots connus à cette bougie
@@ -156,55 +160,54 @@ class SMCAnalyzer:
             l0, l0i = lows_known[-1]
             l1, l1i = lows_known[-2]
 
-            # Skip si les pivots n'ont pas changé (comme PineScript)
-            if last_h0 == h0 and last_l0 == l0:
-                continue
+            # Calculer bu_ob_index en continu (comme PineScript)
+            # for i=h1i to l0i[zigzag_len]
+            for i in range(h1i, min(l0i + 1, len(df))):
+                if df['Open'].iloc[i] > df['Close'].iloc[i]:  # Red candle
+                    bu_ob_index = i
 
-            last_h0 = h0
-            last_l0 = l0
+            # Calculer be_ob_index en continu (comme PineScript)
+            # for i=l1i to h0i[zigzag_len]
+            for i in range(l1i, min(h0i + 1, len(df))):
+                if df['Open'].iloc[i] < df['Close'].iloc[i]:  # Green candle
+                    be_ob_index = i
 
+            # Évaluer market change (comme PineScript)
+            # market := last_l0 == l0 or last_h0 == h0 ? market : ...
             prev_market = market
 
-            # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
-            bearish_cond = l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
+            if not (last_l0_for_market == l0 or last_h0_for_market == h0):
+                # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
+                if market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor:
+                    market = -1
+                    last_l0_for_market = l0
+                    last_h0_for_market = h0
+                # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
+                elif market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor:
+                    market = 1
+                    last_l0_for_market = l0
+                    last_h0_for_market = h0
 
-            if market == 1 and bearish_cond:
-                market = -1
+            # Quand market change, créer l'OB avec l'index stocké
+            if prev_market != market:
+                if market == 1:  # MSB Bullish vient de se produire
+                    if bu_ob_index < len(df):
+                        bullish_obs.append({
+                            'index': bu_ob_index,
+                            'low': df['Low'].iloc[bu_ob_index],
+                            'high': df['High'].iloc[bu_ob_index],
+                            'open': df['Open'].iloc[bu_ob_index],
+                            'close': df['Close'].iloc[bu_ob_index]
+                        })
 
-                # Be-OB: dernière bougie verte entre l1i et h0i
-                be_ob_index = None
-                for j in range(l1i, min(h0i + 1, len(df))):
-                    if df['Open'].iloc[j] < df['Close'].iloc[j]:  # Bougie verte
-                        be_ob_index = j
-
-                if be_ob_index is not None:
-                    bearish_obs.append({
-                        'index': be_ob_index,
-                        'low': df['Low'].iloc[be_ob_index],
-                        'high': df['High'].iloc[be_ob_index],
-                        'open': df['Open'].iloc[be_ob_index],
-                        'close': df['Close'].iloc[be_ob_index]
-                    })
-
-            # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
-            bullish_cond = h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
-
-            if market == -1 and bullish_cond:
-                market = 1
-
-                # Bu-OB: dernière bougie rouge entre h1i et l0i
-                bu_ob_index = None
-                for j in range(h1i, min(l0i + 1, len(df))):
-                    if df['Open'].iloc[j] > df['Close'].iloc[j]:  # Bougie rouge
-                        bu_ob_index = j
-
-                if bu_ob_index is not None:
-                    bullish_obs.append({
-                        'index': bu_ob_index,
-                        'low': df['Low'].iloc[bu_ob_index],
-                        'high': df['High'].iloc[bu_ob_index],
-                        'open': df['Open'].iloc[bu_ob_index],
-                        'close': df['Close'].iloc[bu_ob_index]
-                    })
+                if market == -1:  # MSB Bearish vient de se produire
+                    if be_ob_index < len(df):
+                        bearish_obs.append({
+                            'index': be_ob_index,
+                            'low': df['Low'].iloc[be_ob_index],
+                            'high': df['High'].iloc[be_ob_index],
+                            'open': df['Open'].iloc[be_ob_index],
+                            'close': df['Close'].iloc[be_ob_index]
+                        })
 
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
