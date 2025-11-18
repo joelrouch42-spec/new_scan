@@ -53,6 +53,12 @@ class MACDAnalyzer:
         crossovers = self._detect_crossovers(df, macd, signal)
         result['crossovers'] = crossovers
 
+        print(f"DEBUG MACD: {len(crossovers)} crossovers détectés")
+        if len(crossovers) > 0:
+            print(f"  Premier: index={crossovers[0]['index']}, type={crossovers[0]['type']}, price={crossovers[0]['price']:.2f}")
+        print(f"  MACD range: {macd[macd != 0].min():.4f} to {macd.max():.4f}")
+        print(f"  Signal range: {signal[signal != 0].min():.4f} to {signal.max():.4f}")
+
         return result
 
 
@@ -95,11 +101,10 @@ class MACDAnalyzer:
         crossovers = []
 
         # Parcourir les données pour détecter les croisements
-        for i in range(1, len(macd)):
-            # Skip si valeurs invalides
-            if macd[i] == 0 or signal[i] == 0:
-                continue
+        # Commencer après que l'EMA slow soit initialisée
+        start_idx = max(self.slow_length, self.signal_length)
 
+        for i in range(start_idx + 1, len(macd)):
             macd_prev = macd[i-1]
             macd_curr = macd[i]
             signal_prev = signal[i-1]

@@ -405,6 +405,7 @@ class StockScanner:
         # Ajouter MACD crossovers si activé
         if self.macd_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
+            print(f"DEBUG: MACD détecté {len(macd_result['crossovers'])} croisements")
 
             # Ajouter des X rouges aux croisements
             for cross in macd_result['crossovers']:
