@@ -16,6 +16,7 @@ logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
 
 class StockScanner:
     def __init__(self, settings_file, is_backtest=False, chart_symbol=None, force_yahoo=False):
+        print(f">>> Initialisation StockScanner (mode={'backtest' if is_backtest else 'realtime'})...")
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -452,6 +453,7 @@ class StockScanner:
 
     def run_backtest(self):
         """Execute le mode backtest"""
+        print(">>> Démarrage du mode backtest...")
         backtest_config = self.settings['backtest']
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
@@ -640,6 +642,7 @@ class StockScanner:
 
     def run(self):
         """Point d'entrée principal"""
+        print(f">>> Exécution en mode: {self.mode}")
         if self.mode == 'backtest':
             self.run_backtest()
         elif self.mode == 'realtime':
@@ -649,11 +652,13 @@ class StockScanner:
 
 
 if __name__ == '__main__':
+    print(">>> Script démarré...")
     parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
     parser.add_argument('--yahoo', action='store_true', help='Force l\'utilisation de Yahoo Finance au lieu de IBKR')
     args = parser.parse_args()
+    print(f">>> Arguments: backtest={args.backtest}, chart={args.chart}, yahoo={args.yahoo}")
 
     scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, force_yahoo=args.yahoo)
     scanner.run()
