@@ -69,15 +69,16 @@ class SRLevelsAnalyzer:
         current_resistance = None
         start_idx = None
 
-        # Parcourir toutes les bougies pour détecter les pivots
-        for i in range(self.left_bars, len(df) - self.right_bars):
-            high_val = df['High'].iloc[i]
+        # Convertir en numpy pour performance
+        highs = df['High'].values
 
-            # Vérifier si c'est un pivot high
-            left_ok = all(df['High'].iloc[i] >= df['High'].iloc[j]
-                         for j in range(i - self.left_bars, i))
-            right_ok = all(df['High'].iloc[i] >= df['High'].iloc[j]
-                          for j in range(i + 1, i + self.right_bars + 1))
+        # Parcourir toutes les bougies pour détecter les pivots
+        for i in range(self.left_bars, len(highs) - self.right_bars):
+            high_val = highs[i]
+
+            # Vérifier si c'est un pivot high (optimisé avec numpy)
+            left_ok = np.all(highs[i] >= highs[i - self.left_bars:i])
+            right_ok = np.all(highs[i] >= highs[i + 1:i + self.right_bars + 1])
 
             if left_ok and right_ok:
                 # Nouveau pivot détecté
@@ -98,7 +99,7 @@ class SRLevelsAnalyzer:
             resistances.append({
                 'level': current_resistance,
                 'start_idx': start_idx,
-                'end_idx': len(df) - 1
+                'end_idx': len(highs) - 1
             })
 
         return resistances
@@ -114,15 +115,16 @@ class SRLevelsAnalyzer:
         current_support = None
         start_idx = None
 
-        # Parcourir toutes les bougies pour détecter les pivots
-        for i in range(self.left_bars, len(df) - self.right_bars):
-            low_val = df['Low'].iloc[i]
+        # Convertir en numpy pour performance
+        lows = df['Low'].values
 
-            # Vérifier si c'est un pivot low
-            left_ok = all(df['Low'].iloc[i] <= df['Low'].iloc[j]
-                         for j in range(i - self.left_bars, i))
-            right_ok = all(df['Low'].iloc[i] <= df['Low'].iloc[j]
-                          for j in range(i + 1, i + self.right_bars + 1))
+        # Parcourir toutes les bougies pour détecter les pivots
+        for i in range(self.left_bars, len(lows) - self.right_bars):
+            low_val = lows[i]
+
+            # Vérifier si c'est un pivot low (optimisé avec numpy)
+            left_ok = np.all(lows[i] <= lows[i - self.left_bars:i])
+            right_ok = np.all(lows[i] <= lows[i + 1:i + self.right_bars + 1])
 
             if left_ok and right_ok:
                 # Nouveau pivot détecté
@@ -143,7 +145,7 @@ class SRLevelsAnalyzer:
             supports.append({
                 'level': current_support,
                 'start_idx': start_idx,
-                'end_idx': len(df) - 1
+                'end_idx': len(lows) - 1
             })
 
         return supports
@@ -221,14 +223,21 @@ class SRLevelsAnalyzer:
         # Calculer oscillateur de volume
         vol_osc = self._calculate_volume_oscillator(df)
 
+        # Convertir en numpy arrays pour performance
+        closes = df['Close'].values
+        opens = df['Open'].values
+        highs = df['High'].values
+        lows = df['Low'].values
+        vol_osc_arr = vol_osc.values
+
         # Parcourir toutes les bougies pour détecter les cassures
         for i in range(1, len(df)):
-            close_prev = df['Close'].iloc[i-1]
-            close_curr = df['Close'].iloc[i]
-            open_curr = df['Open'].iloc[i]
-            high_curr = df['High'].iloc[i]
-            low_curr = df['Low'].iloc[i]
-            vol_curr = vol_osc.iloc[i]
+            close_prev = closes[i-1]
+            close_curr = closes[i]
+            open_curr = opens[i]
+            high_curr = highs[i]
+            low_curr = lows[i]
+            vol_curr = vol_osc_arr[i]
 
             # Trouver le niveau de support actif à cet instant
             active_support = None
