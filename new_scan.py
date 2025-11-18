@@ -18,11 +18,12 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 warnings.filterwarnings('ignore')
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, use_crypto=False):
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, use_crypto=False, all_charts=False):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
         self.use_crypto = use_crypto
+        self.all_charts = all_charts
 
         # Récupérer les indicateurs depuis settings
         self.indicators_config = self.settings.get('indicators', {})
@@ -684,8 +685,8 @@ class StockScanner:
                                     print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                                 alert_triggered = True
 
-                    # Générer le graphique si --chart spécifié OU si alerte déclenchée
-                    if self.chart_symbol or alert_triggered:
+                    # Générer le graphique si --chart spécifié OU si alerte déclenchée OU si --all-charts
+                    if self.chart_symbol or alert_triggered or self.all_charts:
                         self.generate_chart(symbol, df)
 
                 print(f"Prochain scan dans {update_interval}s...\n")
@@ -774,8 +775,8 @@ class StockScanner:
                                     print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                                 alert_triggered = True
 
-                    # Générer le graphique si une alerte a été déclenchée
-                    if alert_triggered:
+                    # Générer le graphique si une alerte a été déclenchée OU si --all-charts
+                    if alert_triggered or self.all_charts:
                         self.generate_chart(symbol, df)
 
                 print(f"Prochain scan dans {update_interval}s...\n")
@@ -804,7 +805,8 @@ if __name__ == '__main__':
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
     parser.add_argument('--crypto', action='store_true', help='Scanne les cryptos au lieu du NASDAQ 100')
+    parser.add_argument('--all-charts', action='store_true', help='Génère les graphiques pour tous les symboles')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, use_crypto=args.crypto)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, use_crypto=args.crypto, all_charts=args.all_charts)
     scanner.run()
