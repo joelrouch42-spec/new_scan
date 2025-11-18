@@ -1,7 +1,7 @@
 {
   "data_folder": "data",
   "backtest": {
-    "candle_nb": 400,
+    "candle_nb": 600,
     "interval": "1d",
     "data_source": "ibkr",
     "test_candle_start": 1,
