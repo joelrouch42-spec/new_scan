@@ -433,7 +433,9 @@ class StockScanner:
         if self.sr_analyzer:
             sr_result = self.sr_analyzer.analyze(df)
             if sr_result['support'] or sr_result['resistance']:
-                print(f"  S/R: Support={sr_result['support']:.2f if sr_result['support'] else 'N/A'}, Resistance={sr_result['resistance']:.2f if sr_result['resistance'] else 'N/A'}")
+                support_str = f"{sr_result['support']:.2f}" if sr_result['support'] else 'N/A'
+                resistance_str = f"{sr_result['resistance']:.2f}" if sr_result['resistance'] else 'N/A'
+                print(f"  S/R: Support={support_str}, Resistance={resistance_str}")
 
         return filename
 
@@ -512,7 +514,9 @@ class StockScanner:
             if self.sr_analyzer:
                 sr_result = self.sr_analyzer.analyze(df)
                 if sr_result['support'] or sr_result['resistance']:
-                    print(f"{symbol}: Support={sr_result['support']:.2f if sr_result['support'] else 'N/A'}, Resistance={sr_result['resistance']:.2f if sr_result['resistance'] else 'N/A'}")
+                    support_str = f"{sr_result['support']:.2f}" if sr_result['support'] else 'N/A'
+                    resistance_str = f"{sr_result['resistance']:.2f}" if sr_result['resistance'] else 'N/A'
+                    print(f"{symbol}: Support={support_str}, Resistance={resistance_str}")
 
                     # Alertes pour cassures S/R
                     for break_info in sr_result['breaks']:
