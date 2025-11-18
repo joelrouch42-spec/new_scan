@@ -414,12 +414,12 @@ class StockScanner:
                 if cross['type'] == 'bullish':
                     # Flèche bleue vers le haut EN DESSOUS de la bougie
                     color = 'blue'
-                    symbol = 'triangle-up'
+                    marker_symbol = 'triangle-up'
                     y_offset = -0.015  # Décalage vers le bas en % du prix
                 else:
                     # Flèche rouge vers le bas AU-DESSUS de la bougie
                     color = 'red'
-                    symbol = 'triangle-down'
+                    marker_symbol = 'triangle-down'
                     y_offset = 0.015  # Décalage vers le haut en % du prix
 
                 # Calculer la position Y de la flèche
@@ -432,7 +432,7 @@ class StockScanner:
                     marker=dict(
                         size=12,
                         color=color,
-                        symbol=symbol,
+                        symbol=marker_symbol,
                         line=dict(width=1, color=color)
                     ),
                     name='MACD Cross',
