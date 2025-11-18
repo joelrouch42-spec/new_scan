@@ -46,7 +46,15 @@ class StockScanner:
             self.macd_analyzer = MACDAnalyzer(macd_config)
 
         self.mode = 'backtest' if is_backtest else 'realtime'
-        self.data_folder = self.settings['data_folder']
+
+        # Dossiers séparés pour crypto et nasdaq
+        if self.use_crypto:
+            self.data_folder = 'data_crypto'
+            self.chart_folder = 'chart_crypto'
+        else:
+            self.data_folder = 'data_nasdaq'
+            self.chart_folder = 'chart_nasdaq'
+
         self.config_file = 'config.txt'
         self.chart_symbol = chart_symbol
 
@@ -243,8 +251,7 @@ class StockScanner:
     def generate_chart(self, symbol, df):
         """Génère un graphique HTML avec les indicateurs activés"""
         # Créer le dossier chart s'il n'existe pas
-        chart_folder = 'chart'
-        os.makedirs(chart_folder, exist_ok=True)
+        os.makedirs(self.chart_folder, exist_ok=True)
 
         # Créer le graphique de chandelles
         fig = go.Figure()
@@ -506,7 +513,7 @@ class StockScanner:
         )
 
         # Sauvegarder dans le dossier chart
-        filename = os.path.join(chart_folder, f'{symbol}_indicators.html')
+        filename = os.path.join(self.chart_folder, f'{symbol}_indicators.html')
         fig.write_html(filename)
         return filename
 
