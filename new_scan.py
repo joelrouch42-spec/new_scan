@@ -304,87 +304,97 @@ class StockScanner:
         if self.sr_analyzer:
             sr_result = self.sr_analyzer.analyze(df)
 
-            # Ajouter ligne de résistance (rouge)
-            if sr_result['resistance'] is not None:
+            # Ajouter toutes les lignes de résistance (rouge, pointillée)
+            for lvl in sr_result['resistance_levels']:
+                start_date = df.iloc[lvl['start_idx']]['Date'] if 'Date' in df.columns else lvl['start_idx']
+                end_date = df.iloc[lvl['end_idx']]['Date'] if 'Date' in df.columns else lvl['end_idx']
+
                 fig.add_shape(
                     type="line",
-                    x0=0,
-                    x1=1,
-                    xref="paper",
-                    y0=sr_result['resistance'],
-                    y1=sr_result['resistance'],
-                    line=dict(color="red", width=2, dash="solid")
-                )
-                fig.add_annotation(
-                    x=1,
-                    xref="paper",
-                    y=sr_result['resistance'],
-                    text=f"R: ${sr_result['resistance']:.2f}",
-                    showarrow=False,
-                    xanchor="left",
-                    font=dict(color="red", size=12),
-                    bgcolor="rgba(255,0,0,0.3)"
+                    x0=start_date,
+                    x1=end_date,
+                    y0=lvl['level'],
+                    y1=lvl['level'],
+                    line=dict(color="red", width=1, dash="dash")
                 )
 
-            # Ajouter ligne de support (vert)
-            if sr_result['support'] is not None:
+                # Annotation seulement sur le dernier segment
+                if lvl == sr_result['resistance_levels'][-1]:
+                    fig.add_annotation(
+                        x=end_date,
+                        y=lvl['level'],
+                        text=f"${lvl['level']:.2f}",
+                        showarrow=False,
+                        xanchor="left",
+                        font=dict(color="red", size=10),
+                        bgcolor="rgba(255,0,0,0.2)"
+                    )
+
+            # Ajouter toutes les lignes de support (bleue, pointillée)
+            for lvl in sr_result['support_levels']:
+                start_date = df.iloc[lvl['start_idx']]['Date'] if 'Date' in df.columns else lvl['start_idx']
+                end_date = df.iloc[lvl['end_idx']]['Date'] if 'Date' in df.columns else lvl['end_idx']
+
                 fig.add_shape(
                     type="line",
-                    x0=0,
-                    x1=1,
-                    xref="paper",
-                    y0=sr_result['support'],
-                    y1=sr_result['support'],
-                    line=dict(color="green", width=2, dash="solid")
-                )
-                fig.add_annotation(
-                    x=1,
-                    xref="paper",
-                    y=sr_result['support'],
-                    text=f"S: ${sr_result['support']:.2f}",
-                    showarrow=False,
-                    xanchor="left",
-                    font=dict(color="green", size=12),
-                    bgcolor="rgba(0,255,0,0.3)"
+                    x0=start_date,
+                    x1=end_date,
+                    y0=lvl['level'],
+                    y1=lvl['level'],
+                    line=dict(color="blue", width=1, dash="dash")
                 )
 
-            # Ajouter les marqueurs de cassures
+                # Annotation seulement sur le dernier segment
+                if lvl == sr_result['support_levels'][-1]:
+                    fig.add_annotation(
+                        x=end_date,
+                        y=lvl['level'],
+                        text=f"${lvl['level']:.2f}",
+                        showarrow=False,
+                        xanchor="left",
+                        font=dict(color="blue", size=10),
+                        bgcolor="rgba(0,0,255,0.2)"
+                    )
+
+            # Ajouter les marqueurs de cassures avec annotations
             for break_info in sr_result['breaks']:
                 idx = break_info['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
-                # Couleur et symbole selon le type
+                # Couleur et texte selon le type
                 if break_info['type'] == 'support_break':
-                    color = 'red'
-                    symbol = 'triangle-down'
-                    text = '⬇️ S Break'
+                    bgcolor = 'rgba(255,0,0,0.7)'
+                    text = 'S Break'
                 elif break_info['type'] == 'resistance_break':
-                    color = 'green'
-                    symbol = 'triangle-up'
-                    text = '⬆️ R Break'
+                    bgcolor = 'rgba(0,255,0,0.7)'
+                    text = 'R Break'
                 elif break_info['type'] == 'bear_wick':
-                    color = 'orange'
-                    symbol = 'x'
-                    text = '🕯️ Bear Wick'
+                    bgcolor = 'rgba(255,0,0,0.7)'
+                    text = 'Bear Wick'
                 elif break_info['type'] == 'bull_wick':
-                    color = 'lightgreen'
-                    symbol = 'x'
-                    text = '🕯️ Bull Wick'
+                    bgcolor = 'rgba(0,255,0,0.7)'
+                    text = 'Bull Wick'
                 else:
-                    color = 'white'
-                    symbol = 'circle'
+                    bgcolor = 'rgba(128,128,128,0.7)'
                     text = break_info['description']
 
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[break_info['price']],
-                    mode='markers+text',
-                    marker=dict(size=12, color=color, symbol=symbol),
+                # Ajouter annotation avec rectangle
+                fig.add_annotation(
+                    x=date,
+                    y=break_info['price'],
                     text=text,
-                    textposition='top center',
-                    name=break_info['description'],
-                    showlegend=False
-                ))
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1,
+                    arrowwidth=2,
+                    arrowcolor=bgcolor.replace('0.7', '1.0'),
+                    ax=0,
+                    ay=-40 if 'bull' in break_info['type'] or break_info['type'] == 'resistance_break' else 40,
+                    font=dict(color="white", size=10),
+                    bgcolor=bgcolor,
+                    bordercolor="white",
+                    borderwidth=1
+                )
 
             title_parts.append('S/R Levels')
 
@@ -432,10 +442,10 @@ class StockScanner:
 
         if self.sr_analyzer:
             sr_result = self.sr_analyzer.analyze(df)
-            if sr_result['support'] or sr_result['resistance']:
-                support_str = f"{sr_result['support']:.2f}" if sr_result['support'] else 'N/A'
-                resistance_str = f"{sr_result['resistance']:.2f}" if sr_result['resistance'] else 'N/A'
-                print(f"  S/R: Support={support_str}, Resistance={resistance_str}")
+            support_count = len(sr_result['support_levels'])
+            resistance_count = len(sr_result['resistance_levels'])
+            if support_count > 0 or resistance_count > 0:
+                print(f"  S/R: {support_count} niveaux support (bleu), {resistance_count} niveaux résistance (rouge)")
 
         return filename
 
@@ -513,16 +523,22 @@ class StockScanner:
             # Analyser S/R si activé
             if self.sr_analyzer:
                 sr_result = self.sr_analyzer.analyze(df)
-                if sr_result['support'] or sr_result['resistance']:
-                    support_str = f"{sr_result['support']:.2f}" if sr_result['support'] else 'N/A'
-                    resistance_str = f"{sr_result['resistance']:.2f}" if sr_result['resistance'] else 'N/A'
-                    print(f"{symbol}: Support={support_str}, Resistance={resistance_str}")
+                support_count = len(sr_result['support_levels'])
+                resistance_count = len(sr_result['resistance_levels'])
 
-                    # Alertes pour cassures S/R
-                    for break_info in sr_result['breaks']:
-                        if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
-                            print(f"  ⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
-                            alert_triggered = True
+                if support_count > 0 or resistance_count > 0:
+                    # Afficher le dernier niveau de chaque type
+                    last_support = sr_result['support_levels'][-1]['level'] if support_count > 0 else None
+                    last_resistance = sr_result['resistance_levels'][-1]['level'] if resistance_count > 0 else None
+                    support_str = f"{last_support:.2f}" if last_support else 'N/A'
+                    resistance_str = f"{last_resistance:.2f}" if last_resistance else 'N/A'
+                    print(f"{symbol}: S={support_str}, R={resistance_str} ({support_count} S, {resistance_count} R)")
+
+                # Alertes pour cassures S/R
+                for break_info in sr_result['breaks']:
+                    if break_info['index'] == len(df) - 1:  # Cassure sur la dernière bougie
+                        print(f"  ⚠️  {symbol}: {break_info['description']} @ ${break_info['price']:.2f}")
+                        alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
             if self.chart_symbol or alert_triggered:
