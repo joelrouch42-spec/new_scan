@@ -146,6 +146,8 @@ class SMCAnalyzer:
         be_ob_index = 0
 
         print(f"DEBUG: Total pivots - {len(high_points_arr)} highs, {len(low_points_arr)} lows")
+        print(f"DEBUG: High pivots: {list(zip(high_points_arr, high_index_arr))}")
+        print(f"DEBUG: Low pivots: {list(zip(low_points_arr, low_index_arr))}")
 
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
