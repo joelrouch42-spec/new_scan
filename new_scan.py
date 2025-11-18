@@ -94,17 +94,22 @@ class StockScanner:
             client_id = realtime_config['ibkr_client_id']
 
             ib = IB()
+            print(f"    Connexion à {host}:{port}...")
             ib.connect(host, port, clientId=client_id)
+            print(f"    Connecté!")
 
             # Créer le contrat
             contract = Stock(symbol, 'SMART', 'USD')
+            print(f"    Qualification du contrat {symbol}...")
             qualified = ib.qualifyContracts(contract)
 
             if not qualified:
+                print(f"    ❌ Contrat non qualifié pour {symbol}")
                 ib.disconnect()
                 return None
 
             contract = qualified[0]
+            print(f"    Contrat qualifié: {contract}")
 
             # Calculer la durée
             if interval == '1d':
@@ -117,6 +122,7 @@ class StockScanner:
                 duration_str = f"{candle_nb} D"
                 bar_size = "1 day"
 
+            print(f"    Requête données: duration={duration_str}, barSize={bar_size}")
             # Télécharger les données
             bars = ib.reqHistoricalData(
                 contract,
@@ -129,9 +135,11 @@ class StockScanner:
                 timeout=10
             )
 
+            print(f"    Reçu {len(bars) if bars else 0} bars")
             ib.disconnect()
 
             if not bars or len(bars) < candle_nb:
+                print(f"    ❌ Pas assez de bars: {len(bars) if bars else 0} < {candle_nb}")
                 return None
 
             # Convertir en DataFrame avec conversion timezone EST
