@@ -145,10 +145,6 @@ class SMCAnalyzer:
         bu_ob_index = 0
         be_ob_index = 0
 
-        print(f"DEBUG: Total pivots - {len(high_points_arr)} highs, {len(low_points_arr)} lows")
-        print(f"DEBUG: High pivots: {list(zip(high_points_arr, high_index_arr))}")
-        print(f"DEBUG: Low pivots: {list(zip(low_points_arr, low_index_arr))}")
-
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
             # Trouver les pivots connus à cette bougie
@@ -187,11 +183,9 @@ class SMCAnalyzer:
                 # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
                 if market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor:
                     market = -1
-                    print(f"DEBUG: MSB Bearish @ bar {bar_idx}, l0={l0:.2f}, l1={l1:.2f}, h0={h0:.2f}, be_ob_index={be_ob_index}")
                 # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
                 elif market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor:
                     market = 1
-                    print(f"DEBUG: MSB Bullish @ bar {bar_idx}, h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}, bu_ob_index={bu_ob_index}")
 
             # Si market a changé, mettre à jour les valeurs de référence et créer l'OB
             if prev_market != market:
@@ -201,7 +195,6 @@ class SMCAnalyzer:
 
                 if market == 1:  # MSB Bullish vient de se produire
                     if bu_ob_index < len(df):
-                        print(f"  → Bullish OB créé à index {bu_ob_index}, prix {df['Low'].iloc[bu_ob_index]:.2f}-{df['High'].iloc[bu_ob_index]:.2f}")
                         bullish_obs.append({
                             'index': bu_ob_index,
                             'low': df['Low'].iloc[bu_ob_index],
@@ -214,7 +207,6 @@ class SMCAnalyzer:
 
                 if market == -1:  # MSB Bearish vient de se produire
                     if be_ob_index < len(df):
-                        print(f"  → Bearish OB créé à index {be_ob_index}, prix {df['Low'].iloc[be_ob_index]:.2f}-{df['High'].iloc[be_ob_index]:.2f}")
                         bearish_obs.append({
                             'index': be_ob_index,
                             'low': df['Low'].iloc[be_ob_index],
@@ -231,18 +223,15 @@ class SMCAnalyzer:
                 if not ob['broken'] and ob['created_at_bar'] < bar_idx:
                     if df['Close'].iloc[bar_idx] < ob['low']:
                         ob['broken'] = True
-                        print(f"  ✗ Bullish OB @ {ob['low']:.2f}-{ob['high']:.2f} cassé à bar {bar_idx} (close={df['Close'].iloc[bar_idx]:.2f})")
 
             # Bearish OB cassé si close > top
             for ob in bearish_obs:
                 if not ob['broken'] and ob['created_at_bar'] < bar_idx:
                     if df['Close'].iloc[bar_idx] > ob['high']:
                         ob['broken'] = True
-                        print(f"  ✗ Bearish OB @ {ob['low']:.2f}-{ob['high']:.2f} cassé à bar {bar_idx} (close={df['Close'].iloc[bar_idx]:.2f})")
 
         # Filtrer les OB cassés (comme TradingView les supprime)
         bullish_obs = [ob for ob in bullish_obs if not ob['broken']]
         bearish_obs = [ob for ob in bearish_obs if not ob['broken']]
 
-        print(f"DEBUG: Final (après filtrage) - {len(bullish_obs)} Bullish OB, {len(bearish_obs)} Bearish OB")
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
