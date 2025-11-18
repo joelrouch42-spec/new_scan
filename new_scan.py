@@ -59,6 +59,83 @@ class StockScanner:
         self.chart_symbol = chart_symbol
 
 
+    def get_cache_filename(self, folder):
+        """Retourne le nom du fichier cache dans un dossier"""
+        import glob
+        cache_files = glob.glob(os.path.join(folder, '.cache_*'))
+        return cache_files[0] if cache_files else None
+
+
+    def create_cache_file(self, folder):
+        """Crée un fichier cache avec expiration dans 24h"""
+        os.makedirs(folder, exist_ok=True)
+
+        # Supprimer ancien cache s'il existe
+        old_cache = self.get_cache_filename(folder)
+        if old_cache and os.path.exists(old_cache):
+            os.remove(old_cache)
+
+        # Créer nouveau cache avec timestamp + 24h
+        expiry_time = datetime.now(ZoneInfo('America/New_York')) + timedelta(hours=24)
+        cache_filename = os.path.join(folder, f'.cache_{expiry_time.strftime("%Y%m%d_%H%M%S")}')
+
+        # Créer le fichier vide
+        with open(cache_filename, 'w') as f:
+            f.write('')
+
+        return cache_filename
+
+
+    def is_cache_expired(self, folder):
+        """Vérifie si le cache est expiré"""
+        cache_file = self.get_cache_filename(folder)
+
+        if not cache_file:
+            return True  # Pas de cache = expiré
+
+        # Extraire la date d'expiration du nom du fichier
+        try:
+            basename = os.path.basename(cache_file)
+            # Format: .cache_YYYYMMDD_HHMMSS
+            timestamp_str = basename.replace('.cache_', '')
+            expiry_time = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+            expiry_time = expiry_time.replace(tzinfo=ZoneInfo('America/New_York'))
+
+            current_time = datetime.now(ZoneInfo('America/New_York'))
+
+            return current_time > expiry_time
+        except:
+            return True  # En cas d'erreur, considérer comme expiré
+
+
+    def clean_expired_cache(self):
+        """Nettoie les données et charts si le cache est expiré (mode realtime seulement)"""
+        if self.mode != 'realtime':
+            return
+
+        # Vérifier data folder
+        if self.is_cache_expired(self.data_folder):
+            # Supprimer tous les fichiers CSV dans data folder
+            import glob
+            data_files = glob.glob(os.path.join(self.data_folder, '*.csv'))
+            for f in data_files:
+                os.remove(f)
+
+            # Créer nouveau cache
+            self.create_cache_file(self.data_folder)
+
+        # Vérifier chart folder
+        if self.is_cache_expired(self.chart_folder):
+            # Supprimer tous les fichiers HTML dans chart folder
+            import glob
+            chart_files = glob.glob(os.path.join(self.chart_folder, '*.html'))
+            for f in chart_files:
+                os.remove(f)
+
+            # Créer nouveau cache
+            self.create_cache_file(self.chart_folder)
+
+
     def get_data_filename(self, symbol, candle_nb, interval, date):
         """Génère le nom du fichier de données"""
         return os.path.join(
@@ -546,8 +623,9 @@ class StockScanner:
         # Calculer le nombre total de bougies à charger
         total_candles_needed = candle_nb + test_stop
 
-        # Créer le dossier data s'il n'existe pas
+        # Créer les dossiers s'ils n'existent pas
         os.makedirs(self.data_folder, exist_ok=True)
+        os.makedirs(self.chart_folder, exist_ok=True)
 
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
@@ -630,8 +708,18 @@ class StockScanner:
         interval = realtime_config['interval']
         update_interval = realtime_config['update_interval_seconds']
 
-        # Créer le dossier data
+        # Créer les dossiers
         os.makedirs(self.data_folder, exist_ok=True)
+        os.makedirs(self.chart_folder, exist_ok=True)
+
+        # Nettoyer le cache expiré et recharger si nécessaire
+        self.clean_expired_cache()
+
+        # Créer les fichiers cache s'ils n'existent pas
+        if not self.get_cache_filename(self.data_folder):
+            self.create_cache_file(self.data_folder)
+        if not self.get_cache_filename(self.chart_folder):
+            self.create_cache_file(self.chart_folder)
 
         # Scanner crypto ou NASDAQ 100
         if self.use_crypto:
