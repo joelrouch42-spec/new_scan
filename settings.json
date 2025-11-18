@@ -22,7 +22,7 @@
       "fib_factor": 0.33
     },
     "support_resistance": {
-      "enabled": true,
+      "enabled": false,
       "left_bars": 15,
       "right_bars": 15,
       "volume_threshold": 20,
