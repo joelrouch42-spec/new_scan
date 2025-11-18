@@ -455,6 +455,7 @@ class StockScanner:
         """Execute le mode backtest"""
         print(">>> Démarrage du mode backtest...")
         backtest_config = self.settings['backtest']
+        print(f">>> Config: {backtest_config}")
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
         test_start = backtest_config['test_candle_start']
@@ -462,31 +463,44 @@ class StockScanner:
 
         # Calculer le nombre total de bougies à charger
         total_candles_needed = candle_nb + test_stop
+        print(f">>> Total candles needed: {total_candles_needed}")
 
         # Créer le dossier data s'il n'existe pas
+        print(f">>> Création du dossier: {self.data_folder}")
         os.makedirs(self.data_folder, exist_ok=True)
+        print(">>> Dossier créé")
 
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
             watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
         else:
             # Scanner tous les stocks NASDAQ 100
+            print(">>> Récupération watchlist NASDAQ 100...")
             watchlist = self.get_nasdaq100_symbols()
+            print(f">>> Watchlist: {len(watchlist)} symboles")
 
+        print(">>> Récupération de la date...")
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+        print(f">>> Date: {today}")
 
+        print(f">>> Début de la boucle sur {len(watchlist)} symboles...")
         for item in watchlist:
             symbol = item['symbol']
+            print(f">>> Traitement de {symbol}...")
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
             # Télécharge ou charge les données
             if self.check_file_exists(filename):
+                print(f"  Fichier existe: {filename}")
                 df = pd.read_csv(filename)
             else:
+                print(f"  Téléchargement de {symbol}...")
                 if self.force_yahoo:
                     df = self.download_yahoo_data(symbol, total_candles_needed, interval)
                 else:
+                    print(f"  Connexion IBKR pour {symbol}...")
                     df = self.download_ibkr_data(symbol, total_candles_needed, interval)
+                    print(f"  IBKR terminé pour {symbol}")
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
