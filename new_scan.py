@@ -15,8 +15,7 @@ import yfinance as yf
 logging.getLogger('ib_insync').setLevel(logging.CRITICAL)
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, force_yahoo=False):
-        print(f">>> Initialisation StockScanner (mode={'backtest' if is_backtest else 'realtime'})...")
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -39,7 +38,6 @@ class StockScanner:
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
         self.chart_symbol = chart_symbol
-        self.force_yahoo = force_yahoo
 
 
     def get_data_filename(self, symbol, candle_nb, interval, date):
@@ -94,22 +92,17 @@ class StockScanner:
             client_id = realtime_config['ibkr_client_id']
 
             ib = IB()
-            print(f"    Connexion à {host}:{port}...")
             ib.connect(host, port, clientId=client_id)
-            print(f"    Connecté!")
 
             # Créer le contrat
             contract = Stock(symbol, 'SMART', 'USD')
-            print(f"    Qualification du contrat {symbol}...")
             qualified = ib.qualifyContracts(contract)
 
             if not qualified:
-                print(f"    ❌ Contrat non qualifié pour {symbol}")
                 ib.disconnect()
                 return None
 
             contract = qualified[0]
-            print(f"    Contrat qualifié: {contract}")
 
             # Calculer la durée
             if interval == '1d':
@@ -122,7 +115,6 @@ class StockScanner:
                 duration_str = f"{candle_nb} D"
                 bar_size = "1 day"
 
-            print(f"    Requête données: duration={duration_str}, barSize={bar_size}")
             # Télécharger les données
             bars = ib.reqHistoricalData(
                 contract,
@@ -135,11 +127,9 @@ class StockScanner:
                 timeout=10
             )
 
-            print(f"    Reçu {len(bars) if bars else 0} bars")
             ib.disconnect()
 
             if not bars or len(bars) < candle_nb:
-                print(f"    ❌ Pas assez de bars: {len(bars) if bars else 0} < {candle_nb}")
                 return None
 
             # Convertir en DataFrame avec conversion timezone EST
@@ -166,7 +156,6 @@ class StockScanner:
             return df
 
         except Exception as e:
-            print(f"  ❌ Erreur IBKR pour {symbol}: {e}")
             return None
 
 
@@ -461,9 +450,7 @@ class StockScanner:
 
     def run_backtest(self):
         """Execute le mode backtest"""
-        print(">>> Démarrage du mode backtest...")
         backtest_config = self.settings['backtest']
-        print(f">>> Config: {backtest_config}")
         candle_nb = backtest_config['candle_nb']
         interval = backtest_config['interval']
         test_start = backtest_config['test_candle_start']
@@ -471,44 +458,28 @@ class StockScanner:
 
         # Calculer le nombre total de bougies à charger
         total_candles_needed = candle_nb + test_stop
-        print(f">>> Total candles needed: {total_candles_needed}")
 
         # Créer le dossier data s'il n'existe pas
-        print(f">>> Création du dossier: {self.data_folder}")
         os.makedirs(self.data_folder, exist_ok=True)
-        print(">>> Dossier créé")
 
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
             watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
         else:
             # Scanner tous les stocks NASDAQ 100
-            print(">>> Récupération watchlist NASDAQ 100...")
             watchlist = self.get_nasdaq100_symbols()
-            print(f">>> Watchlist: {len(watchlist)} symboles")
 
-        print(">>> Récupération de la date...")
         today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
-        print(f">>> Date: {today}")
 
-        print(f">>> Début de la boucle sur {len(watchlist)} symboles...")
         for item in watchlist:
             symbol = item['symbol']
-            print(f">>> Traitement de {symbol}...")
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
-            # Télécharge ou charge les données
+            # Télécharge ou charge les données (backtest = toujours Yahoo)
             if self.check_file_exists(filename):
-                print(f"  Fichier existe: {filename}")
                 df = pd.read_csv(filename)
             else:
-                print(f"  Téléchargement de {symbol}...")
-                if self.force_yahoo:
-                    df = self.download_yahoo_data(symbol, total_candles_needed, interval)
-                else:
-                    print(f"  Connexion IBKR pour {symbol}...")
-                    df = self.download_ibkr_data(symbol, total_candles_needed, interval)
-                    print(f"  IBKR terminé pour {symbol}")
+                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
@@ -600,11 +571,8 @@ class StockScanner:
                     symbol = item['symbol']
                     filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
-                    # Télécharge les données fraîches (pas de cache en realtime)
-                    if self.force_yahoo:
-                        df = self.download_yahoo_data(symbol, candle_nb, interval)
-                    else:
-                        df = self.download_ibkr_data(symbol, candle_nb, interval)
+                    # Télécharge les données fraîches (realtime = toujours IBKR)
+                    df = self.download_ibkr_data(symbol, candle_nb, interval)
                     if df is not None:
                         df.to_csv(filename, index=False)
                     else:
@@ -664,7 +632,6 @@ class StockScanner:
 
     def run(self):
         """Point d'entrée principal"""
-        print(f">>> Exécution en mode: {self.mode}")
         if self.mode == 'backtest':
             self.run_backtest()
         elif self.mode == 'realtime':
@@ -674,13 +641,10 @@ class StockScanner:
 
 
 if __name__ == '__main__':
-    print(">>> Script démarré...")
     parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
-    parser.add_argument('--yahoo', action='store_true', help='Force l\'utilisation de Yahoo Finance au lieu de IBKR')
     args = parser.parse_args()
-    print(f">>> Arguments: backtest={args.backtest}, chart={args.chart}, yahoo={args.yahoo}")
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, force_yahoo=args.yahoo)
+    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
     scanner.run()
