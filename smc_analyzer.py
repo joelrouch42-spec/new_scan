@@ -205,7 +205,9 @@ class SMCAnalyzer:
                             'low': df['Low'].iloc[bu_ob_index],
                             'high': df['High'].iloc[bu_ob_index],
                             'open': df['Open'].iloc[bu_ob_index],
-                            'close': df['Close'].iloc[bu_ob_index]
+                            'close': df['Close'].iloc[bu_ob_index],
+                            'broken': False,
+                            'created_at_bar': bar_idx
                         })
 
                 if market == -1:  # MSB Bearish vient de se produire
@@ -216,8 +218,29 @@ class SMCAnalyzer:
                             'low': df['Low'].iloc[be_ob_index],
                             'high': df['High'].iloc[be_ob_index],
                             'open': df['Open'].iloc[be_ob_index],
-                            'close': df['Close'].iloc[be_ob_index]
+                            'close': df['Close'].iloc[be_ob_index],
+                            'broken': False,
+                            'created_at_bar': bar_idx
                         })
 
-        print(f"DEBUG: Final - {len(bullish_obs)} Bullish OB, {len(bearish_obs)} Bearish OB")
+            # Vérifier si des OB sont cassés à cette barre (comme PineScript)
+            # Bullish OB cassé si close < bottom
+            for ob in bullish_obs:
+                if not ob['broken'] and ob['created_at_bar'] < bar_idx:
+                    if df['Close'].iloc[bar_idx] < ob['low']:
+                        ob['broken'] = True
+                        print(f"  ✗ Bullish OB @ {ob['low']:.2f}-{ob['high']:.2f} cassé à bar {bar_idx} (close={df['Close'].iloc[bar_idx]:.2f})")
+
+            # Bearish OB cassé si close > top
+            for ob in bearish_obs:
+                if not ob['broken'] and ob['created_at_bar'] < bar_idx:
+                    if df['Close'].iloc[bar_idx] > ob['high']:
+                        ob['broken'] = True
+                        print(f"  ✗ Bearish OB @ {ob['low']:.2f}-{ob['high']:.2f} cassé à bar {bar_idx} (close={df['Close'].iloc[bar_idx]:.2f})")
+
+        # Filtrer les OB cassés (comme TradingView les supprime)
+        bullish_obs = [ob for ob in bullish_obs if not ob['broken']]
+        bearish_obs = [ob for ob in bearish_obs if not ob['broken']]
+
+        print(f"DEBUG: Final (après filtrage) - {len(bullish_obs)} Bullish OB, {len(bearish_obs)} Bearish OB")
         return {'bullish': bullish_obs, 'bearish': bearish_obs}
