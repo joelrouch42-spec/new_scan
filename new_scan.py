@@ -158,7 +158,7 @@ class StockScanner:
             return df
 
         except Exception as e:
-            # Silencieux pour les erreurs IBKR (connexion refusée, etc.)
+            print(f"  ❌ Erreur IBKR pour {symbol}: {e}")
             return None
 
 
