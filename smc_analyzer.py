@@ -134,22 +134,13 @@ class SMCAnalyzer:
 
         # Besoin d'au moins 2 pivots de chaque type
         if len(high_points_arr) < 2 or len(low_points_arr) < 2:
-            print(f"DEBUG SMC: Pas assez de pivots - highs={len(high_points_arr)}, lows={len(low_points_arr)}")
             return {'bullish': [], 'bearish': []}
-
-        print(f"DEBUG SMC: Pivots détectés - {len(high_points_arr)} highs, {len(low_points_arr)} lows")
-        print(f"DEBUG SMC: high_points={high_points_arr[:5]}, high_indices={high_index_arr[:5]}")
-        print(f"DEBUG SMC: low_points={low_points_arr[:5]}, low_indices={low_index_arr[:5]}")
 
         # Étape 2: Détection des Market Structure Breaks (comme PineScript)
         # Évaluer market à chaque bougie (pas à chaque pivot!)
         market = 1
         last_l0 = None
         last_h0 = None
-
-        print(f"DEBUG SMC: Début analyse MSB sur {len(df)} bougies")
-
-        eval_count = 0
         # Parcourir toutes les bougies (comme le fait PineScript en temps réel)
         for bar_idx in range(zigzag_len, len(df)):
             # Trouver les pivots connus à cette bougie
@@ -169,10 +160,6 @@ class SMCAnalyzer:
             if last_h0 == h0 and last_l0 == l0:
                 continue
 
-            eval_count += 1
-            if eval_count <= 10:  # Print seulement les 10 premières évaluations
-                print(f"DEBUG @ {bar_idx}: h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}, l1={l1:.2f}, market={market}")
-
             last_h0 = h0
             last_l0 = l0
 
@@ -180,12 +167,9 @@ class SMCAnalyzer:
 
             # MSB Bearish: market == 1 and l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
             bearish_cond = l0 < l1 and l0 < l1 - abs(h0 - l1) * fib_factor
-            if eval_count <= 10:
-                print(f"  Bearish check: l0<l1={l0 < l1}, threshold={l1 - abs(h0 - l1) * fib_factor:.2f}, l0={l0:.2f}, cond={bearish_cond}")
 
             if market == 1 and bearish_cond:
                 market = -1
-                print(f"DEBUG SMC: MSB Bearish @ {bar_idx}! l0={l0:.2f}, l1={l1:.2f}, h0={h0:.2f}")
 
                 # Be-OB: dernière bougie verte entre l1i et h0i
                 be_ob_index = None
@@ -194,7 +178,6 @@ class SMCAnalyzer:
                         be_ob_index = j
 
                 if be_ob_index is not None:
-                    print(f"DEBUG SMC: Bearish OB ajouté à index {be_ob_index}")
                     bearish_obs.append({
                         'index': be_ob_index,
                         'low': df['Low'].iloc[be_ob_index],
@@ -205,12 +188,9 @@ class SMCAnalyzer:
 
             # MSB Bullish: market == -1 and h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
             bullish_cond = h0 > h1 and h0 > h1 + abs(h1 - l0) * fib_factor
-            if eval_count <= 10:
-                print(f"  Bullish check: h0>h1={h0 > h1}, threshold={h1 + abs(h1 - l0) * fib_factor:.2f}, h0={h0:.2f}, cond={bullish_cond}")
 
             if market == -1 and bullish_cond:
                 market = 1
-                print(f"DEBUG SMC: MSB Bullish @ {bar_idx}! h0={h0:.2f}, h1={h1:.2f}, l0={l0:.2f}")
 
                 # Bu-OB: dernière bougie rouge entre h1i et l0i
                 bu_ob_index = None
@@ -219,7 +199,6 @@ class SMCAnalyzer:
                         bu_ob_index = j
 
                 if bu_ob_index is not None:
-                    print(f"DEBUG SMC: Bullish OB ajouté à index {bu_ob_index}")
                     bullish_obs.append({
                         'index': bu_ob_index,
                         'low': df['Low'].iloc[bu_ob_index],
