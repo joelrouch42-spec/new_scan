@@ -85,11 +85,12 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'maroon'   # rebounding = vif (signal)
 
-            # Debug pour août
-            date_str = df.index[i].strftime('%Y-%m-%d') if hasattr(df.index[i], 'strftime') else str(df.index[i])
+            # Debug pour août - écrire dans un fichier
+            date_str = str(df.iloc[i]['Date']) if 'Date' in df.columns else str(i)
             if '2024-08' in date_str or '2024-09' in date_str:
-                print(f"DEBUG {date_str}: hist_curr={hist_curr:.4f}, hist_prev={hist_prev:.4f}, "
-                      f"hist_color={hist_color}, line_red={line_red}, line_green={line_green}")
+                with open('macd_debug.log', 'a') as f:
+                    f.write(f"DEBUG {date_str}: hist_curr={hist_curr:.4f}, hist_prev={hist_prev:.4f}, "
+                            f"hist_color={hist_color}, line_red={line_red}, line_green={line_green}\n")
 
             # BUY: Ligne verte ET histogramme lime (vert vif)
             if line_green and hist_color == 'lime':
@@ -104,8 +105,8 @@ class MACDAnalyzer:
 
             # SELL: Ligne rouge ET histogramme maroon (rouge vif)
             if line_red and hist_color == 'maroon':
-                date_str = df.index[i].strftime('%Y-%m-%d') if hasattr(df.index[i], 'strftime') else str(df.index[i])
-                print(f"SELL SIGNAL: {date_str} - hist={hist_curr:.4f}, hist_prev={hist_prev:.4f}, hist_color={hist_color}")
+                with open('macd_debug.log', 'a') as f:
+                    f.write(f"SELL SIGNAL: {date_str} - hist={hist_curr:.4f}, hist_prev={hist_prev:.4f}, hist_color={hist_color}\n")
                 result['sell_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],
