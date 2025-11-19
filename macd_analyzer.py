@@ -83,47 +83,29 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'maroon'
 
-            # Signal d'achat: Ligne verte ET histogramme lime
-            if line_green and hist_color == 'lime':
-                # Vérifier si c'est un nouveau signal (pas déjà actif)
-                is_new = True
-                if i > start_idx + 1:
-                    prev_line_green = macd[i-1] > signal[i-1]
-                    prev_hist_curr = histogram[i-1]
-                    prev_hist_prev = histogram[i-2]
-                    prev_hist_color = 'lime' if prev_hist_curr > 0 and prev_hist_curr > prev_hist_prev else None
-                    if prev_line_green and prev_hist_color == 'lime':
-                        is_new = False
+            # Signal d'achat: Ligne passe de rouge à verte
+            # (MACD croise au-dessus de Signal)
+            prev_line_green = macd[i-1] > signal[i-1]
+            if line_green and not prev_line_green:
+                result['buy_signals'].append({
+                    'index': i,
+                    'price': df.iloc[i]['Close'],
+                    'macd': macd[i],
+                    'signal': signal[i],
+                    'histogram': hist_curr
+                })
 
-                if is_new:
-                    result['buy_signals'].append({
-                        'index': i,
-                        'price': df.iloc[i]['Close'],
-                        'macd': macd[i],
-                        'signal': signal[i],
-                        'histogram': hist_curr
-                    })
-
-            # Signal de vente: Ligne rouge ET histogramme maroon
-            elif line_red and hist_color == 'maroon':
-                # Vérifier si c'est un nouveau signal (pas déjà actif)
-                is_new = True
-                if i > start_idx + 1:
-                    prev_line_red = macd[i-1] < signal[i-1]
-                    prev_hist_curr = histogram[i-1]
-                    prev_hist_prev = histogram[i-2]
-                    prev_hist_color = 'maroon' if prev_hist_curr < 0 and prev_hist_curr >= prev_hist_prev else None
-                    if prev_line_red and prev_hist_color == 'maroon':
-                        is_new = False
-
-                if is_new:
-                    result['sell_signals'].append({
-                        'index': i,
-                        'price': df.iloc[i]['Close'],
-                        'macd': macd[i],
-                        'signal': signal[i],
-                        'histogram': hist_curr
-                    })
+            # Signal de vente: Ligne passe de verte à rouge
+            # (MACD croise en-dessous de Signal)
+            prev_line_red = macd[i-1] < signal[i-1]
+            if line_red and not prev_line_red:
+                result['sell_signals'].append({
+                    'index': i,
+                    'price': df.iloc[i]['Close'],
+                    'macd': macd[i],
+                    'signal': signal[i],
+                    'histogram': hist_curr
+                })
 
             # Stocker toutes les valeurs
             result['values'].append({
