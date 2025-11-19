@@ -8,15 +8,15 @@ def test_signal_logic():
 
     # Test cases: (macd_line_color, squeeze_color, expected_signal)
     test_cases = [
-        ('green', 'lime', 'BUY', 'MACD green + Squeeze lime'),
-        ('green', 'green', 'NONE', 'MACD green but Squeeze green (not lime)'),
-        ('green', 'maroon', 'NONE', 'MACD green but Squeeze maroon'),
-        ('green', 'red', 'NONE', 'MACD green but Squeeze red'),
+        ('green', 'lime', 'BUY', 'MACD green + Squeeze lime (vert vif)'),
+        ('green', 'green', 'NONE', 'MACD green but Squeeze green (vert sombre)'),
+        ('green', 'maroon', 'NONE', 'MACD green but Squeeze maroon (rouge sombre)'),
+        ('green', 'red', 'NONE', 'MACD green but Squeeze red (rouge vif)'),
 
-        ('red', 'maroon', 'SELL', 'MACD red + Squeeze maroon'),
-        ('red', 'red', 'NONE', 'MACD red but Squeeze red (not maroon)'),
-        ('red', 'lime', 'NONE', 'MACD red but Squeeze lime'),
-        ('red', 'green', 'NONE', 'MACD red but Squeeze green'),
+        ('red', 'red', 'SELL', 'MACD red + Squeeze red (rouge vif)'),
+        ('red', 'maroon', 'NONE', 'MACD red but Squeeze maroon (rouge sombre)'),
+        ('red', 'lime', 'NONE', 'MACD red but Squeeze lime (vert vif)'),
+        ('red', 'green', 'NONE', 'MACD red but Squeeze green (vert sombre)'),
     ]
 
     all_passed = True
@@ -25,12 +25,12 @@ def test_signal_logic():
         # Simulate the logic from new_scan.py
         signal = 'NONE'
 
-        # BUY: MACD ligne verte + Squeeze histogram lime
+        # BUY: MACD ligne verte + Squeeze histogram lime (vert vif)
         if macd_color == 'green' and squeeze_color == 'lime':
             signal = 'BUY'
 
-        # SELL: MACD ligne rouge + Squeeze histogram maroon
-        elif macd_color == 'red' and squeeze_color == 'maroon':
+        # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
+        elif macd_color == 'red' and squeeze_color == 'red':
             signal = 'SELL'
 
         status = "✓" if signal == expected else "✗"

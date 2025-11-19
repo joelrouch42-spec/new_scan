@@ -95,9 +95,9 @@ class SqueezeAnalyzer:
                 else:
                     # Negative momentum
                     if val < val_prev:
-                        color = 'maroon'  # Bright red - becoming more negative (longer bars)
+                        color = 'red'     # Bright red (vif) - becoming more negative (longer bars)
                     else:
-                        color = 'red'     # Dark red - becoming less negative (shorter bars)
+                        color = 'maroon'  # Dark red (sombre) - becoming less negative (shorter bars)
 
                 # Detect zero crossings
                 # Cross from negative to positive (0 à +)

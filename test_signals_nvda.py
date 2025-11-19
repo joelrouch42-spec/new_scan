@@ -79,16 +79,16 @@ for macd_val in macd_result['values']:
         signal = 'NONE'
         description = ''
 
-        # BUY: MACD ligne verte + Squeeze histogram lime
+        # BUY: MACD ligne verte + Squeeze histogram lime (vert vif)
         if macd_line == 'green' and squeeze_color == 'lime':
             signal = 'BUY'
             description = 'MACD green + Squeeze lime (vert vif)'
             buy_count += 1
 
-        # SELL: MACD ligne rouge + Squeeze histogram maroon
-        elif macd_line == 'red' and squeeze_color == 'maroon':
+        # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
+        elif macd_line == 'red' and squeeze_color == 'red':
             signal = 'SELL'
-            description = 'MACD red + Squeeze maroon (rouge vif)'
+            description = 'MACD red + Squeeze red (rouge vif)'
             sell_count += 1
 
         # Only print signals (not every candle)
@@ -100,4 +100,4 @@ print(f"Total BUY signals: {buy_count}")
 print(f"Total SELL signals: {sell_count}")
 print(f"\nLogic verified:")
 print("  ✓ BUY = MACD line green + Squeeze histogram lime (vert vif)")
-print("  ✓ SELL = MACD line red + Squeeze histogram maroon (rouge vif)")
+print("  ✓ SELL = MACD line red + Squeeze histogram red (rouge vif)")
