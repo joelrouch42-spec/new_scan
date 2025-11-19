@@ -421,7 +421,7 @@ class StockScanner:
 
         # Combiner MACD + Squeeze Momentum pour les signaux
         # BUY: MACD ligne verte + Squeeze histogram lime (vert vif)
-        # SELL: MACD ligne rouge + Squeeze histogram maroon (rouge vif)
+        # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
         if self.macd_analyzer and self.squeeze_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
             squeeze_result = self.squeeze_analyzer.analyze(df)
@@ -447,8 +447,8 @@ class StockScanner:
                             'price': df.iloc[idx]['Close']
                         })
 
-                    # SELL: MACD ligne rouge + Squeeze histogram maroon (rouge vif)
-                    elif macd_val['line_color'] == 'red' and squeeze_val['color'] == 'maroon':
+                    # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
+                    elif macd_val['line_color'] == 'red' and squeeze_val['color'] == 'red':
                         sell_signals.append({
                             'index': idx,
                             'price': df.iloc[idx]['Close']
@@ -610,9 +610,9 @@ class StockScanner:
                         print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (MACD green + Squeeze lime)")
                         alert_triggered = True
 
-                    # SELL: MACD ligne rouge + Squeeze histogram maroon (rouge vif)
-                    elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'maroon':
-                        print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze maroon)")
+                    # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
+                    elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'red':
+                        print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze red)")
                         alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
@@ -687,9 +687,9 @@ class StockScanner:
                                 print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (MACD green + Squeeze lime)")
                                 alert_triggered = True
 
-                            # SELL: MACD ligne rouge + Squeeze histogram maroon (rouge vif)
-                            elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'maroon':
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze maroon)")
+                            # SELL: MACD ligne rouge + Squeeze histogram red (rouge vif)
+                            elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'red':
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze red)")
                                 alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
