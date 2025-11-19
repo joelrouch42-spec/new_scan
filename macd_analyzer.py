@@ -85,6 +85,12 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'maroon'   # rebounding = vif (signal)
 
+            # Debug pour août
+            date_str = df.index[i].strftime('%Y-%m-%d') if hasattr(df.index[i], 'strftime') else str(df.index[i])
+            if '2024-08' in date_str or '2024-09' in date_str:
+                print(f"DEBUG {date_str}: hist_curr={hist_curr:.4f}, hist_prev={hist_prev:.4f}, "
+                      f"hist_color={hist_color}, line_red={line_red}, line_green={line_green}")
+
             # BUY: Ligne verte ET histogramme lime (vert vif)
             if line_green and hist_color == 'lime':
                 result['buy_signals'].append({
