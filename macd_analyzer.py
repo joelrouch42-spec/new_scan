@@ -67,10 +67,10 @@ class MACDAnalyzer:
             line_red = macd[i] < signal[i]
 
             # Déterminer la couleur de l'histogramme
-            # Lime: hist > 0 et hist > hist_prev
-            # Green: hist > 0 et hist <= hist_prev
-            # Red: hist < 0 et hist < hist_prev
-            # Maroon: hist < 0 et hist >= hist_prev
+            # Lime: hist > 0 et hist > hist_prev (ascending in positive)
+            # Green: hist > 0 et hist <= hist_prev (descending in positive)
+            # Maroon: hist < 0 et hist < hist_prev (descending in negative = rouge vif/bright)
+            # Red: hist < 0 et hist >= hist_prev (ascending in negative = rouge sombre/dark)
 
             if hist_curr > 0:
                 if hist_curr > hist_prev:
@@ -78,10 +78,12 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'green'
             else:
+                # INVERTED: When negative, descending (more negative) = maroon (bright)
+                #           When negative, ascending (less negative) = red (dark)
                 if hist_curr < hist_prev:
-                    hist_color = 'red'
+                    hist_color = 'maroon'  # descending = bright red = rouge vif
                 else:
-                    hist_color = 'maroon'
+                    hist_color = 'red'      # ascending = dark red = rouge sombre
 
             # BUY: Ligne verte ET histogramme lime (vert vif)
             if line_green and hist_color == 'lime':
