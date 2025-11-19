@@ -466,14 +466,14 @@ class StockScanner:
                     showlegend=False
                 ))
 
-            # Flèches supplémentaires pour histogramme (lime/maroon)
+            # Flèches supplémentaires pour histogramme
             for val in macd_result['values']:
                 idx = val['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
                 price = df.iloc[idx]['Close']
 
-                # Flèche verte vive pour histogramme lime (plus bas)
-                if val['hist_color'] == 'lime':
+                # Flèche verte pour histogramme positif (vert vif)
+                if val['histogram'] > 0:
                     arrow_y = price * 0.975
 
                     fig.add_trace(go.Scatter(
@@ -486,12 +486,12 @@ class StockScanner:
                             symbol='triangle-up',
                             line=dict(width=1, color='green')
                         ),
-                        name='Hist Lime',
+                        name='Hist Positif',
                         showlegend=False
                     ))
 
-                # Flèche rouge vive pour histogramme maroon (plus haut)
-                elif val['hist_color'] == 'maroon':
+                # Flèche rouge pour histogramme négatif (rouge vif)
+                elif val['histogram'] < 0:
                     arrow_y = price * 1.025
 
                     fig.add_trace(go.Scatter(
@@ -504,7 +504,7 @@ class StockScanner:
                             symbol='triangle-down',
                             line=dict(width=1, color='darkred')
                         ),
-                        name='Hist Maroon',
+                        name='Hist Négatif',
                         showlegend=False
                     ))
 
