@@ -419,16 +419,16 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Ajouter MACD buy/sell signals (ligne verte+lime, ligne rouge+maroon)
+        # Ajouter MACD signals (ligne + histogramme)
         if self.macd_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
 
-            # Ajouter les signaux BUY (ligne verte + hist lime)
+            # Flèches pour la ligne MACD (verte/rouge)
             for signal in macd_result['buy_signals']:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
-                # Flèche verte vers le haut EN DESSOUS de la bougie
+                # Flèche verte pour ligne verte EN DESSOUS
                 arrow_y = signal['price'] * 0.985
 
                 fig.add_trace(go.Scatter(
@@ -436,21 +436,20 @@ class StockScanner:
                     y=[arrow_y],
                     mode='markers',
                     marker=dict(
-                        size=14,
-                        color='lime',
+                        size=12,
+                        color='green',
                         symbol='triangle-up',
-                        line=dict(width=2, color='green')
+                        line=dict(width=1, color='darkgreen')
                     ),
-                    name='MACD BUY',
+                    name='Ligne Verte',
                     showlegend=False
                 ))
 
-            # Ajouter les signaux SELL (ligne rouge + hist maroon)
             for signal in macd_result['sell_signals']:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
-                # Flèche rouge vers le bas AU-DESSUS de la bougie
+                # Flèche rouge pour ligne rouge AU-DESSUS
                 arrow_y = signal['price'] * 1.015
 
                 fig.add_trace(go.Scatter(
@@ -458,14 +457,56 @@ class StockScanner:
                     y=[arrow_y],
                     mode='markers',
                     marker=dict(
-                        size=14,
-                        color='maroon',
+                        size=12,
+                        color='red',
                         symbol='triangle-down',
-                        line=dict(width=2, color='darkred')
+                        line=dict(width=1, color='darkred')
                     ),
-                    name='MACD SELL',
+                    name='Ligne Rouge',
                     showlegend=False
                 ))
+
+            # Flèches supplémentaires pour histogramme (lime/maroon)
+            for val in macd_result['values']:
+                idx = val['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+                price = df.iloc[idx]['Close']
+
+                # Flèche verte vive pour histogramme lime (plus bas)
+                if val['hist_color'] == 'lime':
+                    arrow_y = price * 0.975
+
+                    fig.add_trace(go.Scatter(
+                        x=[date],
+                        y=[arrow_y],
+                        mode='markers',
+                        marker=dict(
+                            size=10,
+                            color='lime',
+                            symbol='triangle-up',
+                            line=dict(width=1, color='green')
+                        ),
+                        name='Hist Lime',
+                        showlegend=False
+                    ))
+
+                # Flèche rouge vive pour histogramme maroon (plus haut)
+                elif val['hist_color'] == 'maroon':
+                    arrow_y = price * 1.025
+
+                    fig.add_trace(go.Scatter(
+                        x=[date],
+                        y=[arrow_y],
+                        mode='markers',
+                        marker=dict(
+                            size=10,
+                            color='maroon',
+                            symbol='triangle-down',
+                            line=dict(width=1, color='darkred')
+                        ),
+                        name='Hist Maroon',
+                        showlegend=False
+                    ))
 
             total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
             if total_signals > 0:
