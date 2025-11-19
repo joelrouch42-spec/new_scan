@@ -104,6 +104,8 @@ class MACDAnalyzer:
 
             # SELL: Ligne rouge ET histogramme maroon (rouge vif)
             if line_red and hist_color == 'maroon':
+                date_str = df.index[i].strftime('%Y-%m-%d') if hasattr(df.index[i], 'strftime') else str(df.index[i])
+                print(f"SELL SIGNAL: {date_str} - hist={hist_curr:.4f}, hist_prev={hist_prev:.4f}, hist_color={hist_color}")
                 result['sell_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],
