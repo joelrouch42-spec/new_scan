@@ -69,8 +69,8 @@ class MACDAnalyzer:
             # Déterminer la couleur de l'histogramme
             # Lime: hist > 0 et hist > hist_prev (ascending)
             # Green: hist > 0 et hist <= hist_prev (descending)
-            # Maroon: hist < 0 et hist >= hist_prev (rebounding = rouge vif)
-            # Red: hist < 0 et hist < hist_prev (descending = rouge sombre)
+            # Maroon: hist < 0 et hist < hist_prev (descending = rouge vif, barres plus longues)
+            # Red: hist < 0 et hist >= hist_prev (rebounding = rouge sombre, barres plus courtes)
 
             if hist_curr > 0:
                 if hist_curr > hist_prev:
@@ -78,12 +78,12 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'green'
             else:
-                # When negative: rebounding (less negative) = maroon (vif)
-                #                descending (more negative) = red (sombre)
+                # When negative: descending (more negative, longer bars) = maroon (vif) = SIGNAL
+                #                rebounding (less negative, shorter bars) = red (sombre) = NO SIGNAL
                 if hist_curr < hist_prev:
-                    hist_color = 'red'      # descending = sombre (no signal)
+                    hist_color = 'maroon'   # descending = vif (signal)
                 else:
-                    hist_color = 'maroon'   # rebounding = vif (signal)
+                    hist_color = 'red'      # rebounding = sombre (no signal)
 
             # Debug pour août - écrire dans un fichier
             date_str = str(df.iloc[i]['Date']) if 'Date' in df.columns else str(i)
