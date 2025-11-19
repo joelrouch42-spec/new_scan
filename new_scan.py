@@ -419,109 +419,64 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Ajouter MACD buy/sell signals si activé
-        if self.macd_analyzer:
-            macd_result = self.macd_analyzer.analyze(df)
+        # MACD signals (TEMPORAIREMENT DÉSACTIVÉ)
+        # if self.macd_analyzer:
+        #     macd_result = self.macd_analyzer.analyze(df)
+        #     total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
+        #     if total_signals > 0:
+        #         title_parts.append(f'MACD ({total_signals} signals)')
 
-            # Ajouter les signaux BUY (ligne verte + hist lime)
-            for signal in macd_result['buy_signals']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Flèche verte vers le haut EN DESSOUS de la bougie
-                arrow_y = signal['price'] * 0.985
-
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=14,
-                        color='lime',
-                        symbol='triangle-up',
-                        line=dict(width=2, color='green')
-                    ),
-                    name='MACD BUY',
-                    showlegend=False
-                ))
-
-            # Ajouter les signaux SELL (ligne rouge + hist maroon)
-            for signal in macd_result['sell_signals']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Flèche rouge vers le bas AU-DESSUS de la bougie
-                arrow_y = signal['price'] * 1.015
-
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=14,
-                        color='red',
-                        symbol='triangle-down',
-                        line=dict(width=2, color='darkred')
-                    ),
-                    name='MACD SELL',
-                    showlegend=False
-                ))
-
-            total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
-            if total_signals > 0:
-                title_parts.append(f'MACD ({total_signals} signals)')
-
-        # Ajouter Squeeze Momentum signals si activé
+        # Ajouter Squeeze Momentum histogram colors si activé
         if self.squeeze_analyzer:
             squeeze_result = self.squeeze_analyzer.analyze(df)
 
-            # Ajouter les signaux 0 à + (bullish)
-            for signal in squeeze_result['zero_cross_positive']:
-                idx = signal['index']
+            # Parcourir toutes les valeurs pour détecter les barres lime et maroon
+            for val in squeeze_result['values']:
+                idx = val['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+                price = df.iloc[idx]['Close']
 
-                # Flèche verte claire vers le haut
-                arrow_y = signal['price'] * 0.98
+                # Flèche verte quand histogramme est LIME (vert clair)
+                if val['color'] == 'lime':
+                    arrow_y = price * 0.985
 
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=12,
-                        color='lightgreen',
-                        symbol='arrow-up',
-                        line=dict(width=2, color='green')
-                    ),
-                    name='Squeeze 0→+',
-                    showlegend=False
-                ))
+                    fig.add_trace(go.Scatter(
+                        x=[date],
+                        y=[arrow_y],
+                        mode='markers',
+                        marker=dict(
+                            size=14,
+                            color='lime',
+                            symbol='triangle-up',
+                            line=dict(width=2, color='green')
+                        ),
+                        name='Hist Lime',
+                        showlegend=False
+                    ))
 
-            # Ajouter les signaux 0 à - (bearish)
-            for signal in squeeze_result['zero_cross_negative']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+                # Flèche rouge quand histogramme est MAROON (rouge clair)
+                elif val['color'] == 'maroon':
+                    arrow_y = price * 1.015
 
-                # Flèche rouge vers le bas
-                arrow_y = signal['price'] * 1.02
+                    fig.add_trace(go.Scatter(
+                        x=[date],
+                        y=[arrow_y],
+                        mode='markers',
+                        marker=dict(
+                            size=14,
+                            color='maroon',
+                            symbol='triangle-down',
+                            line=dict(width=2, color='darkred')
+                        ),
+                        name='Hist Maroon',
+                        showlegend=False
+                    ))
 
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=12,
-                        color='orange',
-                        symbol='arrow-down',
-                        line=dict(width=2, color='red')
-                    ),
-                    name='Squeeze 0→-',
-                    showlegend=False
-                ))
-
-            total_squeeze = len(squeeze_result['zero_cross_positive']) + len(squeeze_result['zero_cross_negative'])
-            if total_squeeze > 0:
-                title_parts.append(f'Squeeze ({total_squeeze} signals)')
+            # Compter les barres lime et maroon
+            lime_count = sum(1 for v in squeeze_result['values'] if v['color'] == 'lime')
+            maroon_count = sum(1 for v in squeeze_result['values'] if v['color'] == 'maroon')
+            if lime_count > 0 or maroon_count > 0:
+                title_parts.append(f'Squeeze (Lime={lime_count}, Maroon={maroon_count})')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
