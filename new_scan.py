@@ -384,6 +384,10 @@ class StockScanner:
                 idx = break_info['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
+                # Ignorer les Bull Wick et Bear Wick
+                if break_info['type'] in ['bull_wick', 'bear_wick']:
+                    continue
+
                 # Couleur et texte selon le type
                 if break_info['type'] == 'support_break':
                     bgcolor = 'rgba(255,0,0,0.7)'
@@ -391,12 +395,6 @@ class StockScanner:
                 elif break_info['type'] == 'resistance_break':
                     bgcolor = 'rgba(0,255,0,0.7)'
                     text = 'R Break'
-                elif break_info['type'] == 'bear_wick':
-                    bgcolor = 'rgba(255,0,0,0.7)'
-                    text = 'Bear Wick'
-                elif break_info['type'] == 'bull_wick':
-                    bgcolor = 'rgba(0,255,0,0.7)'
-                    text = 'Bull Wick'
                 else:
                     bgcolor = 'rgba(128,128,128,0.7)'
                     text = break_info['description']
@@ -412,7 +410,7 @@ class StockScanner:
                     arrowwidth=2,
                     arrowcolor=bgcolor.replace('0.7', '1.0'),
                     ax=0,
-                    ay=-40 if 'bull' in break_info['type'] or break_info['type'] == 'resistance_break' else 40,
+                    ay=-40 if break_info['type'] == 'resistance_break' else 40,
                     font=dict(color="white", size=10),
                     bgcolor=bgcolor,
                     bordercolor="white",
