@@ -557,15 +557,20 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Alertes MACD uniquement (croisements sur la dernière bougie)
+                    # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
                     if self.macd_analyzer:
                         macd_result = self.macd_analyzer.analyze(df)
-                        for cross in macd_result['crossovers']:
-                            if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
-                                if cross['type'] == 'bullish':
-                                    print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
-                                else:
-                                    print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
+
+                        # Signal d'achat: ligne verte + histogramme lime
+                        for signal in macd_result['buy_signals']:
+                            if signal['index'] == len(df) - 1:
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
+                                alert_triggered = True
+
+                        # Signal de vente: ligne rouge + histogramme maroon
+                        for signal in macd_result['sell_signals']:
+                            if signal['index'] == len(df) - 1:
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
                                 alert_triggered = True
 
                     # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
@@ -643,15 +648,20 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Alertes MACD uniquement (croisements sur la dernière bougie)
+                    # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
                     if self.macd_analyzer:
                         macd_result = self.macd_analyzer.analyze(df)
-                        for cross in macd_result['crossovers']:
-                            if cross['index'] == len(df) - 1:  # Croisement sur la dernière bougie
-                                if cross['type'] == 'bullish':
-                                    print(f"🔵 {symbol} @ ${current_price:.2f} - MACD Bullish Cross")
-                                else:
-                                    print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
+
+                        # Signal d'achat: ligne verte + histogramme lime
+                        for signal in macd_result['buy_signals']:
+                            if signal['index'] == len(df) - 1:
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
+                                alert_triggered = True
+
+                        # Signal de vente: ligne rouge + histogramme maroon
+                        for signal in macd_result['sell_signals']:
+                            if signal['index'] == len(df) - 1:
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
                                 alert_triggered = True
 
                     # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
