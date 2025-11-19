@@ -419,64 +419,57 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # MACD signals (TEMPORAIREMENT DÉSACTIVÉ)
-        # if self.macd_analyzer:
-        #     macd_result = self.macd_analyzer.analyze(df)
-        #     total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
-        #     if total_signals > 0:
-        #         title_parts.append(f'MACD ({total_signals} signals)')
+        # Ajouter MACD buy/sell signals (ligne verte+lime, ligne rouge+maroon)
+        if self.macd_analyzer:
+            macd_result = self.macd_analyzer.analyze(df)
 
-        # Ajouter Squeeze Momentum histogram colors si activé
-        if self.squeeze_analyzer:
-            squeeze_result = self.squeeze_analyzer.analyze(df)
-
-            # Parcourir toutes les valeurs pour détecter les barres lime et maroon
-            for val in squeeze_result['values']:
-                idx = val['index']
+            # Ajouter les signaux BUY (ligne verte + hist lime)
+            for signal in macd_result['buy_signals']:
+                idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                price = df.iloc[idx]['Close']
 
-                # Flèche verte quand histogramme est LIME (vert clair)
-                if val['color'] == 'lime':
-                    arrow_y = price * 0.985
+                # Flèche verte vers le haut EN DESSOUS de la bougie
+                arrow_y = signal['price'] * 0.985
 
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[arrow_y],
-                        mode='markers',
-                        marker=dict(
-                            size=14,
-                            color='lime',
-                            symbol='triangle-up',
-                            line=dict(width=2, color='green')
-                        ),
-                        name='Hist Lime',
-                        showlegend=False
-                    ))
+                fig.add_trace(go.Scatter(
+                    x=[date],
+                    y=[arrow_y],
+                    mode='markers',
+                    marker=dict(
+                        size=14,
+                        color='lime',
+                        symbol='triangle-up',
+                        line=dict(width=2, color='green')
+                    ),
+                    name='MACD BUY',
+                    showlegend=False
+                ))
 
-                # Flèche rouge quand histogramme est MAROON (rouge clair)
-                elif val['color'] == 'maroon':
-                    arrow_y = price * 1.015
+            # Ajouter les signaux SELL (ligne rouge + hist maroon)
+            for signal in macd_result['sell_signals']:
+                idx = signal['index']
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[arrow_y],
-                        mode='markers',
-                        marker=dict(
-                            size=14,
-                            color='maroon',
-                            symbol='triangle-down',
-                            line=dict(width=2, color='darkred')
-                        ),
-                        name='Hist Maroon',
-                        showlegend=False
-                    ))
+                # Flèche rouge vers le bas AU-DESSUS de la bougie
+                arrow_y = signal['price'] * 1.015
 
-            # Compter les barres lime et maroon
-            lime_count = sum(1 for v in squeeze_result['values'] if v['color'] == 'lime')
-            maroon_count = sum(1 for v in squeeze_result['values'] if v['color'] == 'maroon')
-            if lime_count > 0 or maroon_count > 0:
-                title_parts.append(f'Squeeze (Lime={lime_count}, Maroon={maroon_count})')
+                fig.add_trace(go.Scatter(
+                    x=[date],
+                    y=[arrow_y],
+                    mode='markers',
+                    marker=dict(
+                        size=14,
+                        color='maroon',
+                        symbol='triangle-down',
+                        line=dict(width=2, color='darkred')
+                    ),
+                    name='MACD SELL',
+                    showlegend=False
+                ))
+
+            total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
+            if total_signals > 0:
+                title_parts.append(f'MACD ({total_signals} signals)')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
