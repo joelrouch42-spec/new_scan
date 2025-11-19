@@ -483,86 +483,72 @@ class StockScanner:
             # Scanner tous les stocks NASDAQ 100
             watchlist = self.get_nasdaq100_symbols()
 
-        # Utiliser l'intervalle de scan du mode realtime
-        update_interval = self.settings['realtime']['update_interval_seconds']
+        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles\n")
 
-        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
-        print("Appuyez sur Ctrl+C pour arrêter\n")
+        now = datetime.now(ZoneInfo('America/New_York'))
+        today = now.strftime('%Y-%m-%d')
+        timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
 
-        while True:
-            try:
-                now = datetime.now(ZoneInfo('America/New_York'))
-                today = now.strftime('%Y-%m-%d')
-                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+        print(f"=== Scan {timestamp} ===")
 
-                print(f"=== Scan {timestamp} ===")
+        for item in watchlist:
+            symbol = item['symbol']
+            filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
-                for item in watchlist:
-                    symbol = item['symbol']
-                    filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
+            # Télécharge ou charge les données (backtest = toujours Yahoo)
+            if self.check_file_exists(filename):
+                df = pd.read_csv(filename)
+            else:
+                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
+                if df is not None:
+                    df.to_csv(filename, index=False)
+                else:
+                    continue
 
-                    # Télécharge ou charge les données (backtest = toujours Yahoo)
-                    if self.check_file_exists(filename):
-                        df = pd.read_csv(filename)
-                    else:
-                        df = self.download_yahoo_data(symbol, total_candles_needed, interval)
-                        if df is not None:
-                            df.to_csv(filename, index=False)
-                        else:
-                            continue
+            if df is None or len(df) == 0:
+                continue
 
-                    if df is None or len(df) == 0:
-                        continue
+            # Prix actuel
+            current_price = df.iloc[-1]['Close']
+            alert_triggered = False
 
-                    # Prix actuel
-                    current_price = df.iloc[-1]['Close']
-                    alert_triggered = False
+            # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
+            if self.macd_analyzer:
+                macd_result = self.macd_analyzer.analyze(df)
 
-                    # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
-                    if self.macd_analyzer:
-                        macd_result = self.macd_analyzer.analyze(df)
+                # Signal d'achat: ligne verte + histogramme lime
+                for signal in macd_result['buy_signals']:
+                    if signal['index'] == len(df) - 1:
+                        print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
+                        alert_triggered = True
 
-                        # Signal d'achat: ligne verte + histogramme lime
-                        for signal in macd_result['buy_signals']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
-                                alert_triggered = True
+                # Signal de vente: ligne rouge + histogramme maroon
+                for signal in macd_result['sell_signals']:
+                    if signal['index'] == len(df) - 1:
+                        print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
+                        alert_triggered = True
 
-                        # Signal de vente: ligne rouge + histogramme maroon
-                        for signal in macd_result['sell_signals']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
-                                alert_triggered = True
+            # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
+            if self.squeeze_analyzer:
+                squeeze_result = self.squeeze_analyzer.analyze(df)
 
-                    # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
-                    if self.squeeze_analyzer:
-                        squeeze_result = self.squeeze_analyzer.analyze(df)
+                # Zero cross positive (0 à +)
+                for signal in squeeze_result['zero_cross_positive']:
+                    if signal['index'] == len(df) - 1:
+                        print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
+                        alert_triggered = True
 
-                        # Zero cross positive (0 à +)
-                        for signal in squeeze_result['zero_cross_positive']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
-                                alert_triggered = True
+                # Zero cross negative (0 à -)
+                for signal in squeeze_result['zero_cross_negative']:
+                    if signal['index'] == len(df) - 1:
+                        print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
+                        alert_triggered = True
 
-                        # Zero cross negative (0 à -)
-                        for signal in squeeze_result['zero_cross_negative']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
-                                alert_triggered = True
+            # Générer le graphique si --chart spécifié OU si alerte déclenchée
+            if self.chart_symbol or alert_triggered:
+                self.generate_chart(symbol, df)
 
-                    # Générer le graphique si --chart spécifié OU si alerte déclenchée
-                    if self.chart_symbol or alert_triggered:
-                        self.generate_chart(symbol, df)
-
-                print(f"Prochain scan dans {update_interval}s...\n")
-                time.sleep(update_interval)
-
-            except KeyboardInterrupt:
-                print("\nScanner arrêté par l'utilisateur")
-                break
-            except Exception as e:
-                print(f"Erreur: {e}")
-                time.sleep(update_interval)
+        print("\nScan terminé.")
 
 
     def run_realtime(self):
