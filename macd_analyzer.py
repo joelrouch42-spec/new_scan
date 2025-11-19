@@ -83,8 +83,8 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'maroon'
 
-            # BUY: Ligne verte (à chaque bougie où la ligne est verte)
-            if line_green:
+            # BUY: Ligne verte ET histogramme positif
+            if line_green and hist_curr > 0:
                 result['buy_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],
@@ -94,8 +94,8 @@ class MACDAnalyzer:
                     'hist_color': hist_color
                 })
 
-            # SELL: Ligne rouge (à chaque bougie où la ligne est rouge)
-            if line_red:
+            # SELL: Ligne rouge ET histogramme négatif
+            if line_red and hist_curr < 0:
                 result['sell_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],

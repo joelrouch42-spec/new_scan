@@ -419,16 +419,14 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Ajouter MACD signals (ligne + histogramme)
+        # Ajouter MACD signals (ligne verte + hist positif, ligne rouge + hist négatif)
         if self.macd_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
 
-            # Flèches pour la ligne MACD (verte/rouge)
+            # Signal BUY: Ligne verte + histogramme positif
             for signal in macd_result['buy_signals']:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Flèche verte pour ligne verte EN DESSOUS
                 arrow_y = signal['price'] * 0.985
 
                 fig.add_trace(go.Scatter(
@@ -436,20 +434,19 @@ class StockScanner:
                     y=[arrow_y],
                     mode='markers',
                     marker=dict(
-                        size=12,
-                        color='green',
+                        size=16,
+                        color='lime',
                         symbol='triangle-up',
-                        line=dict(width=1, color='darkgreen')
+                        line=dict(width=2, color='green')
                     ),
-                    name='Ligne Verte',
+                    name='MACD BUY',
                     showlegend=False
                 ))
 
+            # Signal SELL: Ligne rouge + histogramme négatif
             for signal in macd_result['sell_signals']:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Flèche rouge pour ligne rouge AU-DESSUS
                 arrow_y = signal['price'] * 1.015
 
                 fig.add_trace(go.Scatter(
@@ -457,56 +454,14 @@ class StockScanner:
                     y=[arrow_y],
                     mode='markers',
                     marker=dict(
-                        size=12,
+                        size=16,
                         color='red',
                         symbol='triangle-down',
-                        line=dict(width=1, color='darkred')
+                        line=dict(width=2, color='darkred')
                     ),
-                    name='Ligne Rouge',
+                    name='MACD SELL',
                     showlegend=False
                 ))
-
-            # Flèches supplémentaires pour histogramme
-            for val in macd_result['values']:
-                idx = val['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                price = df.iloc[idx]['Close']
-
-                # Flèche verte pour histogramme positif (vert vif)
-                if val['histogram'] > 0:
-                    arrow_y = price * 0.975
-
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[arrow_y],
-                        mode='markers',
-                        marker=dict(
-                            size=10,
-                            color='lime',
-                            symbol='triangle-up',
-                            line=dict(width=1, color='green')
-                        ),
-                        name='Hist Positif',
-                        showlegend=False
-                    ))
-
-                # Flèche rouge pour histogramme négatif (rouge vif)
-                elif val['histogram'] < 0:
-                    arrow_y = price * 1.025
-
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[arrow_y],
-                        mode='markers',
-                        marker=dict(
-                            size=10,
-                            color='maroon',
-                            symbol='triangle-down',
-                            line=dict(width=1, color='darkred')
-                        ),
-                        name='Hist Négatif',
-                        showlegend=False
-                    ))
 
             total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
             if total_signals > 0:
