@@ -419,28 +419,31 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Afficher SEULEMENT les signaux basés sur la ligne MACD
-        # Flèche verte: ligne MACD verte (MACD > Signal)
-        # Flèche rouge: ligne MACD rouge (MACD < Signal)
+        # Afficher les flèches SEULEMENT aux changements de couleur MACD
+        # Flèche verte: passage de rouge à vert (MACD croise Signal vers le haut)
+        # Flèche rouge: passage de vert à rouge (MACD croise Signal vers le bas)
         if self.macd_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
 
             buy_signals = []
             sell_signals = []
 
-            # Parcourir les valeurs MACD
-            for macd_val in macd_result['values']:
-                idx = macd_val['index']
+            # Parcourir les valeurs MACD pour détecter les changements
+            for i in range(1, len(macd_result['values'])):
+                prev_val = macd_result['values'][i-1]
+                curr_val = macd_result['values'][i]
 
-                # Flèche verte: ligne MACD verte
-                if macd_val['line_color'] == 'green':
+                idx = curr_val['index']
+
+                # Flèche verte: passage de rouge à vert
+                if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
                     buy_signals.append({
                         'index': idx,
                         'price': df.iloc[idx]['Close']
                     })
 
-                # Flèche rouge: ligne MACD rouge
-                elif macd_val['line_color'] == 'red':
+                # Flèche rouge: passage de vert à rouge
+                elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
                     sell_signals.append({
                         'index': idx,
                         'price': df.iloc[idx]['Close']
@@ -581,23 +584,24 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
             alert_triggered = False
 
-            # Alertes MACD ligne seulement
+            # Alertes sur changements de couleur MACD seulement
             if self.macd_analyzer:
                 macd_result = self.macd_analyzer.analyze(df)
 
-                # Chercher les signaux sur la dernière bougie
-                last_idx = len(df) - 1
-                macd_last = next((v for v in macd_result['values'] if v['index'] == last_idx), None)
+                # Chercher un changement sur la dernière bougie
+                if len(macd_result['values']) >= 2:
+                    last_idx = len(macd_result['values']) - 1
+                    prev_val = macd_result['values'][last_idx - 1]
+                    curr_val = macd_result['values'][last_idx]
 
-                if macd_last:
-                    # Flèche verte: ligne MACD verte
-                    if macd_last['line_color'] == 'green':
-                        print(f"🟢 {symbol} @ ${current_price:.2f} - MACD ligne verte")
+                    # Flèche verte: passage de rouge à vert
+                    if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
+                        print(f"🟢 {symbol} @ ${current_price:.2f} - MACD passage rouge→vert")
                         alert_triggered = True
 
-                    # Flèche rouge: ligne MACD rouge
-                    elif macd_last['line_color'] == 'red':
-                        print(f"🔴 {symbol} @ ${current_price:.2f} - MACD ligne rouge")
+                    # Flèche rouge: passage de vert à rouge
+                    elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
+                        print(f"🔴 {symbol} @ ${current_price:.2f} - MACD passage vert→rouge")
                         alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
@@ -651,23 +655,24 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Alertes MACD ligne seulement
+                    # Alertes sur changements de couleur MACD seulement
                     if self.macd_analyzer:
                         macd_result = self.macd_analyzer.analyze(df)
 
-                        # Chercher les signaux sur la dernière bougie
-                        last_idx = len(df) - 1
-                        macd_last = next((v for v in macd_result['values'] if v['index'] == last_idx), None)
+                        # Chercher un changement sur la dernière bougie
+                        if len(macd_result['values']) >= 2:
+                            last_idx = len(macd_result['values']) - 1
+                            prev_val = macd_result['values'][last_idx - 1]
+                            curr_val = macd_result['values'][last_idx]
 
-                        if macd_last:
-                            # Flèche verte: ligne MACD verte
-                            if macd_last['line_color'] == 'green':
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD ligne verte")
+                            # Flèche verte: passage de rouge à vert
+                            if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD passage rouge→vert")
                                 alert_triggered = True
 
-                            # Flèche rouge: ligne MACD rouge
-                            elif macd_last['line_color'] == 'red':
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD ligne rouge")
+                            # Flèche rouge: passage de vert à rouge
+                            elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD passage vert→rouge")
                                 alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
