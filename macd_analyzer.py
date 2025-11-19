@@ -31,10 +31,9 @@ class MACDAnalyzer:
             df: DataFrame avec colonnes Open, High, Low, Close, Volume
 
         Returns:
-            Dict contenant les croisements MACD/Signal et les signaux buy/sell
+            Dict contenant les signaux buy/sell
         """
         result = {
-            'crossovers': [],  # Liste de {index, price, type}
             'buy_signals': [],  # Ligne verte + histogramme lime
             'sell_signals': [], # Ligne rouge + histogramme maroon
             'values': []       # Toutes les valeurs pour analyse
@@ -54,10 +53,6 @@ class MACDAnalyzer:
 
         # Calculer l'histogramme
         histogram = macd - signal
-
-        # Détecter les croisements
-        crossovers = self._detect_crossovers(df, macd, signal)
-        result['crossovers'] = crossovers
 
         # Détecter les signaux buy/sell basés sur ligne + histogramme
         start_idx = max(self.slow_length, self.signal_length)
@@ -170,48 +165,3 @@ class MACDAnalyzer:
             sma[i] = np.mean(data[i - period + 1:i + 1])
 
         return sma
-
-
-    def _detect_crossovers(self, df: pd.DataFrame, macd: np.ndarray, signal: np.ndarray) -> List[Dict]:
-        """
-        Détecte les croisements entre MACD et Signal
-
-        Returns:
-            Liste de croisements avec index, prix, et type
-        """
-        crossovers = []
-
-        # Parcourir les données pour détecter les croisements
-        # Commencer après que l'EMA slow soit initialisée
-        start_idx = max(self.slow_length, self.signal_length)
-
-        for i in range(start_idx + 1, len(macd)):
-            macd_prev = macd[i-1]
-            macd_curr = macd[i]
-            signal_prev = signal[i-1]
-            signal_curr = signal[i]
-
-            # Croisement: MACD croise Signal
-            # cross(outMacD, outSignal) dans PineScript
-            crossed = False
-
-            # Bullish cross: MACD passe au-dessus de Signal
-            if macd_prev <= signal_prev and macd_curr > signal_curr:
-                crossed = True
-                cross_type = 'bullish'
-
-            # Bearish cross: MACD passe en-dessous de Signal
-            elif macd_prev >= signal_prev and macd_curr < signal_curr:
-                crossed = True
-                cross_type = 'bearish'
-
-            if crossed:
-                crossovers.append({
-                    'index': i,
-                    'price': df.iloc[i]['Close'],
-                    'type': cross_type,
-                    'macd': macd_curr,
-                    'signal': signal_curr
-                })
-
-        return crossovers
