@@ -83,12 +83,21 @@ class MACDAnalyzer:
                 else:
                     hist_color = 'maroon'
 
-            # Signal d'achat: Ligne croise au-dessus (rouge->vert) ET histogramme est lime
+            # Vérifier l'état précédent
             prev_line_green = macd[i-1] > signal[i-1]
-            prev_line_red = macd[i-1] < signal[i-1]
+            prev_hist_curr = histogram[i-1]
+            prev_hist_prev = histogram[i-2] if i > start_idx + 1 else histogram[i-1]
 
-            # BUY: Croisement bullish (ligne passe de rouge à verte) ET hist est lime
-            if line_green and prev_line_red and hist_color == 'lime':
+            if prev_hist_curr > 0:
+                prev_hist_color = 'lime' if prev_hist_curr > prev_hist_prev else 'green'
+            else:
+                prev_hist_color = 'maroon' if prev_hist_curr >= prev_hist_prev else 'red'
+
+            # BUY: Ligne verte ET hist lime (premier moment où les deux sont vrais ensemble)
+            prev_condition_buy = prev_line_green and prev_hist_color == 'lime'
+            curr_condition_buy = line_green and hist_color == 'lime'
+
+            if curr_condition_buy and not prev_condition_buy:
                 result['buy_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],
@@ -98,8 +107,12 @@ class MACDAnalyzer:
                     'hist_color': hist_color
                 })
 
-            # SELL: Croisement bearish (ligne passe de verte à rouge) ET hist est maroon
-            if line_red and prev_line_green and hist_color == 'maroon':
+            # SELL: Ligne rouge ET hist maroon (premier moment où les deux sont vrais ensemble)
+            prev_line_red = macd[i-1] < signal[i-1]
+            prev_condition_sell = prev_line_red and prev_hist_color == 'maroon'
+            curr_condition_sell = line_red and hist_color == 'maroon'
+
+            if curr_condition_sell and not prev_condition_sell:
                 result['sell_signals'].append({
                     'index': i,
                     'price': df.iloc[i]['Close'],
