@@ -37,10 +37,9 @@ class SqueezeAnalyzer:
             Dict containing squeeze signals and momentum values
         """
         result = {
-            'squeeze_on': [],      # List of squeeze on signals
-            'squeeze_off': [],     # List of squeeze off signals
-            'momentum_change': [], # List of momentum direction changes
-            'values': []          # All calculated values for charting
+            'zero_cross_positive': [],  # Momentum crosses from negative to positive
+            'zero_cross_negative': [],  # Momentum crosses from positive to negative
+            'values': []                # All momentum values with their colors
         }
 
         min_length = max(self.bb_length, self.kc_length)
@@ -74,68 +73,69 @@ class SqueezeAnalyzer:
         # Calculate momentum value using linear regression
         momentum = self._calculate_momentum(df, self.kc_length)
 
-        # Detect squeeze on/off signals and momentum changes
+        # Analyze momentum values
         start_idx = min_length
 
-        for i in range(start_idx + 1, len(df)):
-            # Squeeze ON signal (transition from not squeezed to squeezed)
-            if sqz_on[i] and not sqz_on[i-1]:
-                result['squeeze_on'].append({
-                    'index': i,
-                    'price': df.iloc[i]['Close'],
-                    'type': 'squeeze_on'
-                })
+        for i in range(start_idx, len(df)):
+            # Determine bar color based on Pine Script logic:
+            # bcolor = iff( val > 0,
+            #             iff( val > nz(val[1]), lime, green),
+            #             iff( val < nz(val[1]), red, maroon))
 
-            # Squeeze OFF signal (transition from squeezed to not squeezed)
-            if sqz_off[i] and not sqz_off[i-1]:
-                result['squeeze_off'].append({
-                    'index': i,
-                    'price': df.iloc[i]['Close'],
-                    'type': 'squeeze_off'
-                })
+            if i > start_idx:
+                val = momentum[i]
+                val_prev = momentum[i-1]
 
-            # Momentum direction change
-            if i > start_idx + 1:
-                # Bullish momentum change (negative to positive)
-                if momentum[i-1] < 0 and momentum[i] > 0:
-                    result['momentum_change'].append({
-                        'index': i,
-                        'price': df.iloc[i]['Close'],
-                        'type': 'bullish',
-                        'momentum': momentum[i]
-                    })
-                # Bearish momentum change (positive to negative)
-                elif momentum[i-1] > 0 and momentum[i] < 0:
-                    result['momentum_change'].append({
-                        'index': i,
-                        'price': df.iloc[i]['Close'],
-                        'type': 'bearish',
-                        'momentum': momentum[i]
-                    })
-
-                # Momentum increasing (bullish strengthening)
-                if momentum[i] > 0 and momentum[i] > momentum[i-1]:
-                    color = 'lime'
-                # Momentum positive but decreasing (bullish weakening)
-                elif momentum[i] > 0 and momentum[i] <= momentum[i-1]:
-                    color = 'green'
-                # Momentum negative but increasing (bearish weakening)
-                elif momentum[i] < 0 and momentum[i] > momentum[i-1]:
-                    color = 'maroon'
-                # Momentum decreasing (bearish strengthening)
+                if val > 0:
+                    # Positive momentum
+                    if val > val_prev:
+                        color = 'lime'    # Green light - increasing
+                    else:
+                        color = 'green'   # Green dark - decreasing
                 else:
-                    color = 'red'
+                    # Negative momentum
+                    if val < val_prev:
+                        color = 'red'     # Red dark - decreasing (more negative)
+                    else:
+                        color = 'maroon'  # Red light - increasing (less negative)
+
+                # Detect zero crossings
+                # Cross from negative to positive (0 à +)
+                if val_prev <= 0 and val > 0:
+                    result['zero_cross_positive'].append({
+                        'index': i,
+                        'price': df.iloc[i]['Close'],
+                        'momentum': val
+                    })
+
+                # Cross from positive to negative (0 à -)
+                elif val_prev >= 0 and val < 0:
+                    result['zero_cross_negative'].append({
+                        'index': i,
+                        'price': df.iloc[i]['Close'],
+                        'momentum': val
+                    })
             else:
                 color = 'gray'
+                val = momentum[i]
 
-            # Store values for charting
+            # Determine squeeze color for the dot
+            if sqz_on[i]:
+                squeeze_color = 'black'
+            elif sqz_off[i]:
+                squeeze_color = 'gray'
+            else:
+                squeeze_color = 'blue'  # no squeeze
+
+            # Store all values
             result['values'].append({
                 'index': i,
-                'momentum': momentum[i],
+                'momentum': val,
+                'color': color,
+                'squeeze_color': squeeze_color,
                 'sqz_on': sqz_on[i],
                 'sqz_off': sqz_off[i],
-                'no_sqz': no_sqz[i],
-                'color': color
+                'no_sqz': no_sqz[i]
             })
 
         return result

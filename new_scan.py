@@ -460,82 +460,6 @@ class StockScanner:
 
             title_parts.append(f'MACD ({len(macd_result["crossovers"])} crosses)')
 
-        # Ajouter Squeeze Momentum si activé
-        if self.squeeze_analyzer:
-            squeeze_result = self.squeeze_analyzer.analyze(df)
-
-            # Ajouter markers for squeeze on/off
-            for signal in squeeze_result['squeeze_on']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Black circle marker for squeeze ON
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[signal['price'] * 0.985],  # Below candle
-                    mode='markers',
-                    marker=dict(
-                        size=10,
-                        color='black',
-                        symbol='circle',
-                        line=dict(width=2, color='white')
-                    ),
-                    name='Squeeze ON',
-                    showlegend=False
-                ))
-
-            for signal in squeeze_result['squeeze_off']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                # Gray circle marker for squeeze OFF
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[signal['price'] * 1.015],  # Above candle
-                    mode='markers',
-                    marker=dict(
-                        size=10,
-                        color='gray',
-                        symbol='circle',
-                        line=dict(width=2, color='white')
-                    ),
-                    name='Squeeze OFF',
-                    showlegend=False
-                ))
-
-            # Ajouter markers for momentum changes
-            for signal in squeeze_result['momentum_change']:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-
-                if signal['type'] == 'bullish':
-                    color = 'lime'
-                    marker_symbol = 'triangle-up'
-                    y_offset = -0.020
-                else:
-                    color = 'red'
-                    marker_symbol = 'triangle-down'
-                    y_offset = 0.020
-
-                arrow_y = signal['price'] * (1 + y_offset)
-
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=10,
-                        color=color,
-                        symbol=marker_symbol,
-                        line=dict(width=1, color=color)
-                    ),
-                    name='Momentum Change',
-                    showlegend=False
-                ))
-
-            squeeze_signals = len(squeeze_result['squeeze_on']) + len(squeeze_result['squeeze_off']) + len(squeeze_result['momentum_change'])
-            title_parts.append(f'Squeeze ({squeeze_signals} signals)')
-
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
         fig.update_layout(
@@ -644,29 +568,20 @@ class StockScanner:
                                     print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                                 alert_triggered = True
 
-                    # Alertes Squeeze Momentum (squeeze on/off et momentum changes sur la dernière bougie)
+                    # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
                     if self.squeeze_analyzer:
                         squeeze_result = self.squeeze_analyzer.analyze(df)
 
-                        # Squeeze ON alerts
-                        for signal in squeeze_result['squeeze_on']:
+                        # Zero cross positive (0 à +)
+                        for signal in squeeze_result['zero_cross_positive']:
                             if signal['index'] == len(df) - 1:
-                                print(f"⚫ {symbol} @ ${current_price:.2f} - Squeeze ON (consolidation)")
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
                                 alert_triggered = True
 
-                        # Squeeze OFF alerts (potential breakout)
-                        for signal in squeeze_result['squeeze_off']:
+                        # Zero cross negative (0 à -)
+                        for signal in squeeze_result['zero_cross_negative']:
                             if signal['index'] == len(df) - 1:
-                                print(f"⚪ {symbol} @ ${current_price:.2f} - Squeeze OFF (breakout potential)")
-                                alert_triggered = True
-
-                        # Momentum change alerts
-                        for signal in squeeze_result['momentum_change']:
-                            if signal['index'] == len(df) - 1:
-                                if signal['type'] == 'bullish':
-                                    print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze Momentum: Bullish Change")
-                                else:
-                                    print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze Momentum: Bearish Change")
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
                                 alert_triggered = True
 
                     # Générer le graphique si --chart spécifié OU si alerte déclenchée
@@ -739,29 +654,20 @@ class StockScanner:
                                     print(f"🔴 {symbol} @ ${current_price:.2f} - MACD Bearish Cross")
                                 alert_triggered = True
 
-                    # Alertes Squeeze Momentum (squeeze on/off et momentum changes sur la dernière bougie)
+                    # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
                     if self.squeeze_analyzer:
                         squeeze_result = self.squeeze_analyzer.analyze(df)
 
-                        # Squeeze ON alerts
-                        for signal in squeeze_result['squeeze_on']:
+                        # Zero cross positive (0 à +)
+                        for signal in squeeze_result['zero_cross_positive']:
                             if signal['index'] == len(df) - 1:
-                                print(f"⚫ {symbol} @ ${current_price:.2f} - Squeeze ON (consolidation)")
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
                                 alert_triggered = True
 
-                        # Squeeze OFF alerts (potential breakout)
-                        for signal in squeeze_result['squeeze_off']:
+                        # Zero cross negative (0 à -)
+                        for signal in squeeze_result['zero_cross_negative']:
                             if signal['index'] == len(df) - 1:
-                                print(f"⚪ {symbol} @ ${current_price:.2f} - Squeeze OFF (breakout potential)")
-                                alert_triggered = True
-
-                        # Momentum change alerts
-                        for signal in squeeze_result['momentum_change']:
-                            if signal['index'] == len(df) - 1:
-                                if signal['type'] == 'bullish':
-                                    print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze Momentum: Bullish Change")
-                                else:
-                                    print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze Momentum: Bearish Change")
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
                                 alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
