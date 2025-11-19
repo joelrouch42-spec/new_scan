@@ -94,10 +94,11 @@ class SqueezeAnalyzer:
                         color = 'green'   # Dark green - becoming less positive (shorter bars)
                 else:
                     # Negative momentum
+                    # Match Pine Script exactly: iff( val < nz(val[1]), red, maroon)
                     if val < val_prev:
-                        color = 'maroon'  # Dark red (sombre) - becoming more negative (longer bars)
+                        color = 'red'     # Pine 'red' - becoming more negative (longer bars)
                     else:
-                        color = 'red'     # Bright red (vif) - becoming less negative (shorter bars)
+                        color = 'maroon'  # Pine 'maroon' - becoming less negative (shorter bars)
 
                 # Detect zero crossings
                 # Cross from negative to positive (0 à +)
