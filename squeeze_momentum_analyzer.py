@@ -89,15 +89,15 @@ class SqueezeAnalyzer:
                 if val > 0:
                     # Positive momentum
                     if val > val_prev:
-                        color = 'lime'    # Green light - increasing
+                        color = 'lime'    # Bright green - becoming more positive (longer bars)
                     else:
-                        color = 'green'   # Green dark - decreasing
+                        color = 'green'   # Dark green - becoming less positive (shorter bars)
                 else:
                     # Negative momentum
                     if val < val_prev:
-                        color = 'maroon'  # Red light - decreasing (more negative)
+                        color = 'maroon'  # Bright red - becoming more negative (longer bars)
                     else:
-                        color = 'red'     # Red dark - increasing (less negative)
+                        color = 'red'     # Dark red - becoming less negative (shorter bars)
 
                 # Detect zero crossings
                 # Cross from negative to positive (0 à +)
