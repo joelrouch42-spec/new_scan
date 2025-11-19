@@ -26,17 +26,16 @@ class MACDAnalyzer:
     def analyze(self, df: pd.DataFrame) -> Dict:
         """
         Analyse complète MACD sur le DataFrame
+        Retourne uniquement l'état de la ligne MACD (verte ou rouge)
 
         Args:
             df: DataFrame avec colonnes Open, High, Low, Close, Volume
 
         Returns:
-            Dict contenant les signaux buy/sell
+            Dict contenant les valeurs MACD et l'état de la ligne
         """
         result = {
-            'buy_signals': [],  # Ligne verte + histogramme lime
-            'sell_signals': [], # Ligne rouge + histogramme maroon
-            'values': []       # Toutes les valeurs pour analyse
+            'values': []  # Valeurs MACD avec état de la ligne (green/red)
         }
 
         if len(df) < max(self.slow_length, self.signal_length) + 1:
@@ -54,78 +53,21 @@ class MACDAnalyzer:
         # Calculer l'histogramme
         histogram = macd - signal
 
-        # Détecter les signaux buy/sell basés sur ligne + histogramme
+        # Analyser l'état de la ligne MACD
         start_idx = max(self.slow_length, self.signal_length)
 
-        for i in range(start_idx + 1, len(df)):
-            hist_curr = histogram[i]
-            hist_prev = histogram[i-1]
-
-            # Déterminer la couleur de la ligne épaisse
+        for i in range(start_idx, len(df)):
+            # Déterminer la couleur de la ligne MACD
             # Verte si MACD > Signal, Rouge si MACD < Signal
-            line_green = macd[i] > signal[i]
-            line_red = macd[i] < signal[i]
-
-            # Déterminer la couleur de l'histogramme
-            # Lime: hist > 0 et hist > hist_prev (ascending)
-            # Green: hist > 0 et hist <= hist_prev (descending)
-            # Maroon: hist < 0 et hist < hist_prev (descending = rouge vif, barres plus longues)
-            # Red: hist < 0 et hist >= hist_prev (rebounding = rouge sombre, barres plus courtes)
-
-            if hist_curr > 0:
-                if hist_curr > hist_prev:
-                    hist_color = 'lime'
-                else:
-                    hist_color = 'green'
-            else:
-                # When negative: descending (more negative, longer bars) = maroon (vif) = SIGNAL
-                #                rebounding (less negative, shorter bars) = red (sombre) = NO SIGNAL
-                if hist_curr < hist_prev:
-                    hist_color = 'maroon'   # descending = vif (signal)
-                else:
-                    hist_color = 'red'      # rebounding = sombre (no signal)
-
-            # Debug pour juillet/août/sept - écrire dans un fichier
-            date_str = str(df.iloc[i]['Date']) if 'Date' in df.columns else str(i)
-            if '2025-07' in date_str or '2025-08' in date_str or '2025-09' in date_str:
-                with open('macd_debug.log', 'a') as f:
-                    f.write(f"DEBUG {date_str}: hist_curr={hist_curr:.4f}, hist_prev={hist_prev:.4f}, "
-                            f"hist_color={hist_color}, line_red={line_red}, line_green={line_green}\n")
-
-            # BUY: Ligne verte ET histogramme lime (vert vif)
-            if line_green and hist_color == 'lime':
-                with open('macd_debug.log', 'a') as f:
-                    f.write(f"BUY SIGNAL: {date_str} - hist={hist_curr:.4f}, hist_prev={hist_prev:.4f}, hist_color={hist_color}\n")
-                result['buy_signals'].append({
-                    'index': i,
-                    'price': df.iloc[i]['Close'],
-                    'macd': macd[i],
-                    'signal': signal[i],
-                    'histogram': hist_curr,
-                    'hist_color': hist_color
-                })
-
-            # SELL: Ligne rouge ET histogramme maroon (rouge vif)
-            if line_red and hist_color == 'maroon':
-                with open('macd_debug.log', 'a') as f:
-                    f.write(f"SELL SIGNAL: {date_str} - hist={hist_curr:.4f}, hist_prev={hist_prev:.4f}, hist_color={hist_color}\n")
-                result['sell_signals'].append({
-                    'index': i,
-                    'price': df.iloc[i]['Close'],
-                    'macd': macd[i],
-                    'signal': signal[i],
-                    'histogram': hist_curr,
-                    'hist_color': hist_color
-                })
+            line_color = 'green' if macd[i] > signal[i] else 'red'
 
             # Stocker toutes les valeurs
             result['values'].append({
                 'index': i,
                 'macd': macd[i],
                 'signal': signal[i],
-                'histogram': hist_curr,
-                'line_color': 'green' if line_green else 'red',
-                'hist_color': hist_color
+                'histogram': histogram[i],
+                'line_color': line_color
             })
 
         return result

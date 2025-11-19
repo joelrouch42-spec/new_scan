@@ -419,12 +419,43 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Ajouter MACD signals (ligne verte + hist positif, ligne rouge + hist négatif)
-        if self.macd_analyzer:
+        # Combiner MACD + Squeeze Momentum pour les signaux
+        # BUY: MACD ligne verte + Squeeze histogram lime (vert vif)
+        # SELL: MACD ligne rouge + Squeeze histogram maroon (rouge vif)
+        if self.macd_analyzer and self.squeeze_analyzer:
             macd_result = self.macd_analyzer.analyze(df)
+            squeeze_result = self.squeeze_analyzer.analyze(df)
 
-            # Signal BUY: Ligne verte + histogramme positif
-            for signal in macd_result['buy_signals']:
+            # Créer un dictionnaire pour accès rapide aux couleurs squeeze par index
+            squeeze_by_index = {v['index']: v for v in squeeze_result['values']}
+
+            buy_signals = []
+            sell_signals = []
+
+            # Parcourir les valeurs MACD et combiner avec Squeeze
+            for macd_val in macd_result['values']:
+                idx = macd_val['index']
+
+                # Vérifier si on a une valeur Squeeze pour cet index
+                if idx in squeeze_by_index:
+                    squeeze_val = squeeze_by_index[idx]
+
+                    # BUY: MACD ligne verte + Squeeze histogram lime
+                    if macd_val['line_color'] == 'green' and squeeze_val['color'] == 'lime':
+                        buy_signals.append({
+                            'index': idx,
+                            'price': df.iloc[idx]['Close']
+                        })
+
+                    # SELL: MACD ligne rouge + Squeeze histogram maroon
+                    elif macd_val['line_color'] == 'red' and squeeze_val['color'] == 'maroon':
+                        sell_signals.append({
+                            'index': idx,
+                            'price': df.iloc[idx]['Close']
+                        })
+
+            # Afficher les signaux BUY
+            for signal in buy_signals:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
                 arrow_y = signal['price'] * 0.985
@@ -439,12 +470,12 @@ class StockScanner:
                         symbol='triangle-up',
                         line=dict(width=2, color='green')
                     ),
-                    name='MACD BUY',
+                    name='BUY',
                     showlegend=False
                 ))
 
-            # Signal SELL: Ligne rouge + histogramme négatif
-            for signal in macd_result['sell_signals']:
+            # Afficher les signaux SELL
+            for signal in sell_signals:
                 idx = signal['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
                 arrow_y = signal['price'] * 1.015
@@ -459,13 +490,13 @@ class StockScanner:
                         symbol='triangle-down',
                         line=dict(width=2, color='darkred')
                     ),
-                    name='MACD SELL',
+                    name='SELL',
                     showlegend=False
                 ))
 
-            total_signals = len(macd_result['buy_signals']) + len(macd_result['sell_signals'])
+            total_signals = len(buy_signals) + len(sell_signals)
             if total_signals > 0:
-                title_parts.append(f'MACD ({total_signals} signals)')
+                title_parts.append(f'Combined Signals ({total_signals})')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
@@ -558,36 +589,30 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
             alert_triggered = False
 
-            # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
-            if self.macd_analyzer:
+            # Alertes combinées: MACD ligne + Squeeze Momentum histogram
+            if self.macd_analyzer and self.squeeze_analyzer:
                 macd_result = self.macd_analyzer.analyze(df)
-
-                # Signal d'achat: ligne verte + histogramme lime
-                for signal in macd_result['buy_signals']:
-                    if signal['index'] == len(df) - 1:
-                        print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
-                        alert_triggered = True
-
-                # Signal de vente: ligne rouge + histogramme maroon
-                for signal in macd_result['sell_signals']:
-                    if signal['index'] == len(df) - 1:
-                        print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
-                        alert_triggered = True
-
-            # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
-            if self.squeeze_analyzer:
                 squeeze_result = self.squeeze_analyzer.analyze(df)
 
-                # Zero cross positive (0 à +)
-                for signal in squeeze_result['zero_cross_positive']:
-                    if signal['index'] == len(df) - 1:
-                        print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
+                # Créer un dictionnaire pour accès rapide aux couleurs squeeze par index
+                squeeze_by_index = {v['index']: v for v in squeeze_result['values']}
+
+                # Chercher les signaux sur la dernière bougie
+                last_idx = len(df) - 1
+
+                # Trouver les valeurs MACD et Squeeze pour la dernière bougie
+                macd_last = next((v for v in macd_result['values'] if v['index'] == last_idx), None)
+                squeeze_last = squeeze_by_index.get(last_idx)
+
+                if macd_last and squeeze_last:
+                    # BUY: MACD ligne verte + Squeeze histogram lime
+                    if macd_last['line_color'] == 'green' and squeeze_last['color'] == 'lime':
+                        print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (MACD green + Squeeze lime)")
                         alert_triggered = True
 
-                # Zero cross negative (0 à -)
-                for signal in squeeze_result['zero_cross_negative']:
-                    if signal['index'] == len(df) - 1:
-                        print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
+                    # SELL: MACD ligne rouge + Squeeze histogram maroon
+                    elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'maroon':
+                        print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze maroon)")
                         alert_triggered = True
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
@@ -641,36 +666,30 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Alertes MACD (ligne verte+lime et ligne rouge+maroon)
-                    if self.macd_analyzer:
+                    # Alertes combinées: MACD ligne + Squeeze Momentum histogram
+                    if self.macd_analyzer and self.squeeze_analyzer:
                         macd_result = self.macd_analyzer.analyze(df)
-
-                        # Signal d'achat: ligne verte + histogramme lime
-                        for signal in macd_result['buy_signals']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD BUY (ligne verte + hist lime)")
-                                alert_triggered = True
-
-                        # Signal de vente: ligne rouge + histogramme maroon
-                        for signal in macd_result['sell_signals']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD SELL (ligne rouge + hist maroon)")
-                                alert_triggered = True
-
-                    # Alertes Squeeze Momentum (zero crossings sur la dernière bougie)
-                    if self.squeeze_analyzer:
                         squeeze_result = self.squeeze_analyzer.analyze(df)
 
-                        # Zero cross positive (0 à +)
-                        for signal in squeeze_result['zero_cross_positive']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - Squeeze: 0 à + (momentum={signal['momentum']:.3f})")
+                        # Créer un dictionnaire pour accès rapide aux couleurs squeeze par index
+                        squeeze_by_index = {v['index']: v for v in squeeze_result['values']}
+
+                        # Chercher les signaux sur la dernière bougie
+                        last_idx = len(df) - 1
+
+                        # Trouver les valeurs MACD et Squeeze pour la dernière bougie
+                        macd_last = next((v for v in macd_result['values'] if v['index'] == last_idx), None)
+                        squeeze_last = squeeze_by_index.get(last_idx)
+
+                        if macd_last and squeeze_last:
+                            # BUY: MACD ligne verte + Squeeze histogram lime
+                            if macd_last['line_color'] == 'green' and squeeze_last['color'] == 'lime':
+                                print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (MACD green + Squeeze lime)")
                                 alert_triggered = True
 
-                        # Zero cross negative (0 à -)
-                        for signal in squeeze_result['zero_cross_negative']:
-                            if signal['index'] == len(df) - 1:
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - Squeeze: 0 à - (momentum={signal['momentum']:.3f})")
+                            # SELL: MACD ligne rouge + Squeeze histogram maroon
+                            elif macd_last['line_color'] == 'red' and squeeze_last['color'] == 'maroon':
+                                print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (MACD red + Squeeze maroon)")
                                 alert_triggered = True
 
                     # Générer le graphique si une alerte a été déclenchée
