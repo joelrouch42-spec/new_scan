@@ -49,6 +49,12 @@ class StockScanner:
             squeeze_config = self.indicators_config['squeeze_momentum']
             self.squeeze_analyzer = SqueezeAnalyzer(squeeze_config)
 
+        self.adx_analyzer = None
+        if 'adx' in self.indicators_config:
+            from adx_analyzer import ADXAnalyzer
+            adx_config = self.indicators_config['adx']
+            self.adx_analyzer = ADXAnalyzer(adx_config)
+
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
@@ -226,6 +232,66 @@ class StockScanner:
         finally:
             # Restaurer stderr dans tous les cas
             sys.stderr = old_stderr
+
+
+    def _generate_combined_signals(self, df):
+        """
+        Génère les signaux combinés Squeeze + MACD + ADX
+        Logique exacte du Pine Script:
+        - BUY: Squeeze lime + MACD green + ADX > threshold (transition)
+        - SELL: Squeeze red + MACD red + ADX > threshold (transition)
+        """
+        buy_signals = []
+        sell_signals = []
+
+        if not self.macd_analyzer or not self.squeeze_analyzer or not self.adx_analyzer:
+            return buy_signals, sell_signals
+
+        macd_result = self.macd_analyzer.analyze(df)
+        squeeze_result = self.squeeze_analyzer.analyze(df)
+        adx_result = self.adx_analyzer.analyze(df)
+
+        macd_by_idx = {v['index']: v for v in macd_result.get('values', [])}
+        squeeze_by_idx = {v['index']: v for v in squeeze_result.get('values', [])}
+        adx_by_idx = {v['index']: v for v in adx_result.get('values', [])}
+
+        common_indices = sorted(set(macd_by_idx.keys()) & set(squeeze_by_idx.keys()) & set(adx_by_idx.keys()))
+
+        if not common_indices:
+            return buy_signals, sell_signals
+
+        prev_green = False
+        prev_red = False
+
+        for i, idx in enumerate(common_indices):
+            if i == 0:
+                continue
+
+            sqz = squeeze_by_idx[idx]
+            macd = macd_by_idx[idx]
+            adx = adx_by_idx[idx]
+
+            # Conditions exactes du Pine
+            sqz_green = sqz['color'] == 'lime'
+            sqz_red = sqz['color'] == 'red'
+            macd_green = macd['line_color'] == 'green'
+            macd_red = macd['line_color'] == 'red'
+            in_trend = adx['in_trend']
+
+            combined_green = sqz_green and macd_green and in_trend
+            combined_red = sqz_red and macd_red and in_trend
+
+            # Transition seulement
+            if combined_green and not prev_green:
+                buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
+
+            if combined_red and not prev_red:
+                sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
+
+            prev_green = combined_green
+            prev_red = combined_red
+
+        return buy_signals, sell_signals
 
 
     def generate_chart(self, symbol, df):
@@ -419,79 +485,52 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Afficher les flèches SEULEMENT aux changements de couleur MACD
-        # Flèche verte: passage de rouge à vert (MACD croise Signal vers le haut)
-        # Flèche rouge: passage de vert à rouge (MACD croise Signal vers le bas)
-        if self.macd_analyzer:
-            macd_result = self.macd_analyzer.analyze(df)
+        # Signaux combinés Squeeze + MACD + ADX
+        buy_signals, sell_signals = self._generate_combined_signals(df)
 
-            buy_signals = []
-            sell_signals = []
+        # Afficher les signaux BUY
+        for signal in buy_signals:
+            idx = signal['index']
+            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+            arrow_y = signal['price'] * 0.985
 
-            # Parcourir les valeurs MACD pour détecter les changements
-            for i in range(1, len(macd_result['values'])):
-                prev_val = macd_result['values'][i-1]
-                curr_val = macd_result['values'][i]
+            fig.add_trace(go.Scatter(
+                x=[date],
+                y=[arrow_y],
+                mode='markers',
+                marker=dict(
+                    size=16,
+                    color='lime',
+                    symbol='triangle-up',
+                    line=dict(width=2, color='green')
+                ),
+                name='BUY',
+                showlegend=False
+            ))
 
-                idx = curr_val['index']
+        # Afficher les signaux SELL
+        for signal in sell_signals:
+            idx = signal['index']
+            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
+            arrow_y = signal['price'] * 1.015
 
-                # Flèche verte: passage de rouge à vert
-                if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
-                    buy_signals.append({
-                        'index': idx,
-                        'price': df.iloc[idx]['Close']
-                    })
+            fig.add_trace(go.Scatter(
+                x=[date],
+                y=[arrow_y],
+                mode='markers',
+                marker=dict(
+                    size=16,
+                    color='red',
+                    symbol='triangle-down',
+                    line=dict(width=2, color='darkred')
+                ),
+                name='SELL',
+                showlegend=False
+            ))
 
-                # Flèche rouge: passage de vert à rouge
-                elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
-                    sell_signals.append({
-                        'index': idx,
-                        'price': df.iloc[idx]['Close']
-                    })
-
-            # Afficher les signaux BUY
-            for signal in buy_signals:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                arrow_y = signal['price'] * 0.985
-
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=16,
-                        color='lime',
-                        symbol='triangle-up',
-                        line=dict(width=2, color='green')
-                    ),
-                    name='BUY',
-                    showlegend=False
-                ))
-
-            # Afficher les signaux SELL
-            for signal in sell_signals:
-                idx = signal['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                arrow_y = signal['price'] * 1.015
-
-                fig.add_trace(go.Scatter(
-                    x=[date],
-                    y=[arrow_y],
-                    mode='markers',
-                    marker=dict(
-                        size=16,
-                        color='red',
-                        symbol='triangle-down',
-                        line=dict(width=2, color='darkred')
-                    ),
-                    name='SELL',
-                    showlegend=False
-                ))
-
-            total_signals = len(buy_signals) + len(sell_signals)
-            if total_signals > 0:
-                title_parts.append(f'MACD Signals ({total_signals})')
+        total_signals = len(buy_signals) + len(sell_signals)
+        if total_signals > 0:
+            title_parts.append(f'Combined Signals ({total_signals})')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
@@ -584,25 +623,21 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
             alert_triggered = False
 
-            # Alertes sur changements de couleur MACD seulement
-            if self.macd_analyzer:
-                macd_result = self.macd_analyzer.analyze(df)
+            # Alertes combinées Squeeze + MACD + ADX
+            buy_signals, sell_signals = self._generate_combined_signals(df)
+            last_candle_idx = len(df) - 1
 
-                # Chercher un changement sur la dernière bougie
-                if len(macd_result['values']) >= 2:
-                    last_idx = len(macd_result['values']) - 1
-                    prev_val = macd_result['values'][last_idx - 1]
-                    curr_val = macd_result['values'][last_idx]
+            for signal in buy_signals:
+                if signal['index'] == last_candle_idx:
+                    print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (Squeeze LIME + MACD GREEN + ADX)")
+                    alert_triggered = True
+                    break
 
-                    # Flèche verte: passage de rouge à vert
-                    if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
-                        print(f"🟢 {symbol} @ ${current_price:.2f} - MACD passage rouge→vert")
-                        alert_triggered = True
-
-                    # Flèche rouge: passage de vert à rouge
-                    elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
-                        print(f"🔴 {symbol} @ ${current_price:.2f} - MACD passage vert→rouge")
-                        alert_triggered = True
+            for signal in sell_signals:
+                if signal['index'] == last_candle_idx:
+                    print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (Squeeze RED + MACD RED + ADX)")
+                    alert_triggered = True
+                    break
 
             # Générer le graphique si --chart spécifié OU si alerte déclenchée
             if self.chart_symbol or alert_triggered:
@@ -655,25 +690,21 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
-                    # Alertes sur changements de couleur MACD seulement
-                    if self.macd_analyzer:
-                        macd_result = self.macd_analyzer.analyze(df)
+                    # Alertes combinées Squeeze + MACD + ADX
+                    buy_signals, sell_signals = self._generate_combined_signals(df)
+                    last_candle_idx = len(df) - 1
 
-                        # Chercher un changement sur la dernière bougie
-                        if len(macd_result['values']) >= 2:
-                            last_idx = len(macd_result['values']) - 1
-                            prev_val = macd_result['values'][last_idx - 1]
-                            curr_val = macd_result['values'][last_idx]
+                    for signal in buy_signals:
+                        if signal['index'] == last_candle_idx:
+                            print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (Squeeze LIME + MACD GREEN + ADX)")
+                            alert_triggered = True
+                            break
 
-                            # Flèche verte: passage de rouge à vert
-                            if prev_val['line_color'] == 'red' and curr_val['line_color'] == 'green':
-                                print(f"🟢 {symbol} @ ${current_price:.2f} - MACD passage rouge→vert")
-                                alert_triggered = True
-
-                            # Flèche rouge: passage de vert à rouge
-                            elif prev_val['line_color'] == 'green' and curr_val['line_color'] == 'red':
-                                print(f"🔴 {symbol} @ ${current_price:.2f} - MACD passage vert→rouge")
-                                alert_triggered = True
+                    for signal in sell_signals:
+                        if signal['index'] == last_candle_idx:
+                            print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (Squeeze RED + MACD RED + ADX)")
+                            alert_triggered = True
+                            break
 
                     # Générer le graphique si une alerte a été déclenchée
                     if alert_triggered:
