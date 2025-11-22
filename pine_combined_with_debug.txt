@@ -16,7 +16,7 @@ useTrueRange = input(true, title="Use TrueRange (KC)")
 // Calculate BB
 source = close
 basis = ta.sma(source, length)
-dev = multKC * ta.stdev(source, length)
+dev = mult * ta.stdev(source, length)
 upperBB = basis + dev
 lowerBB = basis - dev
 

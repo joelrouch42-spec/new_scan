@@ -49,7 +49,7 @@ class SqueezeAnalyzer:
         # Calculate Bollinger Bands
         closes = df['Close'].values
         bb_basis = self._sma(closes, self.bb_length)
-        bb_dev = self.kc_mult * self._stdev(closes, self.bb_length)
+        bb_dev = self.bb_mult * self._stdev(closes, self.bb_length)
         upper_bb = bb_basis + bb_dev
         lower_bb = bb_basis - bb_dev
 
