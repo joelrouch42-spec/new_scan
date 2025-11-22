@@ -266,6 +266,7 @@ class StockScanner:
         print("="*120)
 
         # Calculer combined pour tous les indices d'abord
+        # IMPORTANT: combined = sqz + macd SEULEMENT (sans ADX), comme dans Pine
         combined_states = {}
         for idx in common_indices:
             sqz = squeeze_by_idx[idx]
@@ -279,8 +280,8 @@ class StockScanner:
             in_trend = adx['in_trend']
 
             combined_states[idx] = {
-                'combined_green': sqz_green and macd_green and in_trend,
-                'combined_red': sqz_red and macd_red and in_trend,
+                'combined_green': sqz_green and macd_green,  # SANS ADX
+                'combined_red': sqz_red and macd_red,        # SANS ADX
                 'sqz_color': sqz['color'],
                 'macd_color': macd['line_color'],
                 'adx': adx['adx'],
@@ -288,6 +289,7 @@ class StockScanner:
             }
 
         # Détecter les transitions en comparant avec la bougie IMMÉDIATEMENT précédente
+        # Puis filtrer par ADX au moment du signal
         for i in range(1, len(common_indices)):
             idx = common_indices[i]
             prev_idx = common_indices[i-1]
@@ -297,13 +299,13 @@ class StockScanner:
 
             signal = ''
 
-            # Transition vers green (n'était PAS green à la bougie précédente)
-            if curr['combined_green'] and not prev['combined_green']:
+            # Transition vers green ET ADX filtre
+            if curr['combined_green'] and not prev['combined_green'] and curr['in_trend']:
                 buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
                 signal = '🟢 BUY SIGNAL'
 
-            # Transition vers red (n'était PAS red à la bougie précédente)
-            if curr['combined_red'] and not prev['combined_red']:
+            # Transition vers red ET ADX filtre
+            if curr['combined_red'] and not prev['combined_red'] and curr['in_trend']:
                 sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
                 signal = '🔴 SELL SIGNAL'
 
