@@ -32,8 +32,8 @@ class ADXAnalyzer:
         closes = df['Close'].values
 
         tr = self._calculate_true_range(highs, lows, closes)
-        plus_dm = self._calculate_plus_dm(highs)
-        minus_dm = self._calculate_minus_dm(lows)
+        plus_dm = self._calculate_plus_dm(highs, lows)
+        minus_dm = self._calculate_minus_dm(highs, lows)
 
         tr_smooth = self._wilder_smooth(tr, self.length)
         plus_dm_smooth = self._wilder_smooth(plus_dm, self.length)
@@ -81,24 +81,46 @@ class ADXAnalyzer:
         return tr
 
 
-    def _calculate_plus_dm(self, highs: np.ndarray) -> np.ndarray:
+    def _calculate_plus_dm(self, highs: np.ndarray, lows: np.ndarray) -> np.ndarray:
+        """
+        Calculate +DM (Plus Directional Movement)
+        TradingView logic:
+        up = change(high) = high - high[1]
+        down = -change(low) = -(low - low[1]) = low[1] - low
+        +DM = (up > down and up > 0) ? up : 0
+        """
         plus_dm = np.zeros(len(highs))
 
         for i in range(1, len(highs)):
             up_move = highs[i] - highs[i-1]
-            if up_move > 0:
+            down_move = lows[i-1] - lows[i]
+
+            if up_move > down_move and up_move > 0:
                 plus_dm[i] = up_move
+            else:
+                plus_dm[i] = 0
 
         return plus_dm
 
 
-    def _calculate_minus_dm(self, lows: np.ndarray) -> np.ndarray:
+    def _calculate_minus_dm(self, highs: np.ndarray, lows: np.ndarray) -> np.ndarray:
+        """
+        Calculate -DM (Minus Directional Movement)
+        TradingView logic:
+        up = change(high) = high - high[1]
+        down = -change(low) = low[1] - low
+        -DM = (down > up and down > 0) ? down : 0
+        """
         minus_dm = np.zeros(len(lows))
 
         for i in range(1, len(lows)):
+            up_move = highs[i] - highs[i-1]
             down_move = lows[i-1] - lows[i]
-            if down_move > 0:
+
+            if down_move > up_move and down_move > 0:
                 minus_dm[i] = down_move
+            else:
+                minus_dm[i] = 0
 
         return minus_dm
 
