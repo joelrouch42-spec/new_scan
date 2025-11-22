@@ -260,6 +260,11 @@ class StockScanner:
         if not common_indices:
             return buy_signals, sell_signals
 
+        # LOG HEADER
+        print("\n" + "="*120)
+        print(f"{'Date':<12} {'Close':>8} {'SQZ':>7} {'MACD':>5} {'ADX':>6} {'Trend':>6} {'CombG':>6} {'CombR':>6} {'Signal':<20}")
+        print("="*120)
+
         prev_green = False
         prev_red = False
 
@@ -281,15 +286,31 @@ class StockScanner:
             combined_green = sqz_green and macd_green and in_trend
             combined_red = sqz_red and macd_red and in_trend
 
+            signal = ''
+
             # Transition seulement
             if combined_green and not prev_green:
                 buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
+                signal = '🟢 BUY SIGNAL'
 
             if combined_red and not prev_red:
                 sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
+                signal = '🔴 SELL SIGNAL'
+
+            # LOG: Afficher toutes les lignes où combined est true OU il y a un signal
+            if combined_green or combined_red or signal:
+                date = df.iloc[idx]['Date'] if 'Date' in df.columns else f"idx{idx}"
+                close = df.iloc[idx]['Close']
+                adx_val = adx['adx']
+
+                print(f"{date:<12} {close:>8.2f} {sqz['color']:>7} {macd['line_color']:>5} {adx_val:>6.1f} "
+                      f"{str(in_trend):>6} {str(combined_green):>6} {str(combined_red):>6} {signal:<20}")
 
             prev_green = combined_green
             prev_red = combined_red
+
+        print("="*120)
+        print(f"Total BUY signals: {len(buy_signals)}, SELL signals: {len(sell_signals)}\n")
 
         return buy_signals, sell_signals
 
