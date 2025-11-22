@@ -16,7 +16,7 @@ useTrueRange = input(true, title="Use TrueRange (KC)")
 // Calculate BB
 source = close
 basis = ta.sma(source, length)
-dev = mult * ta.stdev(source, length)
+dev = multKC * ta.stdev(source, length)
 upperBB = basis + dev
 lowerBB = basis - dev
 
@@ -31,7 +31,7 @@ sqzOn = (lowerBB > lowerKC) and (upperBB < upperKC)
 sqzOff = (lowerBB < lowerKC) and (upperBB > upperKC)
 noSqz = not sqzOn and not sqzOff
 
-val = ta.linreg(source - math.avg(math.avg(ta.highest(high, length), ta.lowest(low, length)), ta.sma(close, length)), length, 0)
+val = ta.linreg(source - math.avg(math.avg(ta.highest(high, lengthKC), ta.lowest(low, lengthKC)), ta.sma(close, lengthKC)), lengthKC, 0)
 
 // DEBUG: Afficher la valeur du Squeeze Momentum
 plot(val, "Squeeze Momentum Value", color=color.purple, linewidth=2, display=display.data_window)
