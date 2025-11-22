@@ -265,49 +265,55 @@ class StockScanner:
         print(f"{'Date':<12} {'Close':>8} {'SQZ':>7} {'MACD':>5} {'ADX':>6} {'Trend':>6} {'CombG':>6} {'CombR':>6} {'Signal':<20}")
         print("="*120)
 
-        prev_green = False
-        prev_red = False
-
-        for i, idx in enumerate(common_indices):
-            if i == 0:
-                continue
-
+        # Calculer combined pour tous les indices d'abord
+        combined_states = {}
+        for idx in common_indices:
             sqz = squeeze_by_idx[idx]
             macd = macd_by_idx[idx]
             adx = adx_by_idx[idx]
 
-            # Conditions exactes du Pine
             sqz_green = sqz['color'] == 'lime'
             sqz_red = sqz['color'] == 'red'
             macd_green = macd['line_color'] == 'green'
             macd_red = macd['line_color'] == 'red'
             in_trend = adx['in_trend']
 
-            combined_green = sqz_green and macd_green and in_trend
-            combined_red = sqz_red and macd_red and in_trend
+            combined_states[idx] = {
+                'combined_green': sqz_green and macd_green and in_trend,
+                'combined_red': sqz_red and macd_red and in_trend,
+                'sqz_color': sqz['color'],
+                'macd_color': macd['line_color'],
+                'adx': adx['adx'],
+                'in_trend': in_trend
+            }
+
+        # Détecter les transitions en comparant avec la bougie IMMÉDIATEMENT précédente
+        for i in range(1, len(common_indices)):
+            idx = common_indices[i]
+            prev_idx = common_indices[i-1]
+
+            curr = combined_states[idx]
+            prev = combined_states[prev_idx]
 
             signal = ''
 
-            # Transition seulement
-            if combined_green and not prev_green:
+            # Transition vers green (n'était PAS green à la bougie précédente)
+            if curr['combined_green'] and not prev['combined_green']:
                 buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
                 signal = '🟢 BUY SIGNAL'
 
-            if combined_red and not prev_red:
+            # Transition vers red (n'était PAS red à la bougie précédente)
+            if curr['combined_red'] and not prev['combined_red']:
                 sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
                 signal = '🔴 SELL SIGNAL'
 
             # LOG: Afficher toutes les lignes où combined est true OU il y a un signal
-            if combined_green or combined_red or signal:
+            if curr['combined_green'] or curr['combined_red'] or signal:
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else f"idx{idx}"
                 close = df.iloc[idx]['Close']
-                adx_val = adx['adx']
 
-                print(f"{date:<12} {close:>8.2f} {sqz['color']:>7} {macd['line_color']:>5} {adx_val:>6.1f} "
-                      f"{str(in_trend):>6} {str(combined_green):>6} {str(combined_red):>6} {signal:<20}")
-
-            prev_green = combined_green
-            prev_red = combined_red
+                print(f"{date:<12} {close:>8.2f} {curr['sqz_color']:>7} {curr['macd_color']:>5} {curr['adx']:>6.1f} "
+                      f"{str(curr['in_trend']):>6} {str(curr['combined_green']):>6} {str(curr['combined_red']):>6} {signal:<20}")
 
         print("="*120)
         print(f"Total BUY signals: {len(buy_signals)}, SELL signals: {len(sell_signals)}\n")
