@@ -14,10 +14,9 @@ multKC = input(1.5, title="KC MultFactor")
 useTrueRange = input(true, title="Use TrueRange (KC)")
 
 // Calculate BB
-// NOTE: Original LazyBear uses multKC here instead of mult (likely a bug, but we match it)
 source = close
 basis = ta.sma(source, length)
-dev = multKC * ta.stdev(source, length)
+dev = mult * ta.stdev(source, length)
 upperBB = basis + dev
 lowerBB = basis - dev
 

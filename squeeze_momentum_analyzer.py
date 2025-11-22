@@ -47,10 +47,9 @@ class SqueezeAnalyzer:
             return result
 
         # Calculate Bollinger Bands
-        # NOTE: Original LazyBear code uses multKC instead of mult for BB deviation (bug in original)
         closes = df['Close'].values
         bb_basis = self._sma(closes, self.bb_length)
-        bb_dev = self.kc_mult * self._stdev(closes, self.bb_length)  # Uses kc_mult to match original bug
+        bb_dev = self.bb_mult * self._stdev(closes, self.bb_length)
         upper_bb = bb_basis + bb_dev
         lower_bb = bb_basis - bb_dev
 
