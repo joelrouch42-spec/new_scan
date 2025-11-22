@@ -71,7 +71,7 @@ class SqueezeAnalyzer:
         no_sqz = ~sqz_on & ~sqz_off
 
         # Calculate momentum value using linear regression
-        momentum = self._calculate_momentum(df, self.kc_length)
+        momentum = self._calculate_momentum(df, self.bb_length)
 
         # Analyze momentum values
         start_idx = min_length
@@ -193,7 +193,7 @@ class SqueezeAnalyzer:
     def _calculate_momentum(self, df: pd.DataFrame, length: int) -> np.ndarray:
         """
         Calculate momentum using linear regression
-        Based on: linreg(source - avg(avg(highest(high, lengthKC), lowest(low, lengthKC)), sma(close, lengthKC)), lengthKC, 0)
+        Based on: linreg(source - avg(avg(highest(high, length), lowest(low, length)), sma(close, length)), length, 0)
         """
         closes = df['Close'].values
         highs = df['High'].values
