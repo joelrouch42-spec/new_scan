@@ -47,9 +47,10 @@ class SqueezeAnalyzer:
             return result
 
         # Calculate Bollinger Bands
+        # NOTE: Original LazyBear code uses multKC instead of mult for BB deviation (bug in original)
         closes = df['Close'].values
         bb_basis = self._sma(closes, self.bb_length)
-        bb_dev = self.bb_mult * self._stdev(closes, self.bb_length)
+        bb_dev = self.kc_mult * self._stdev(closes, self.bb_length)  # Uses kc_mult to match original bug
         upper_bb = bb_basis + bb_dev
         lower_bb = bb_basis - bb_dev
 
@@ -71,7 +72,7 @@ class SqueezeAnalyzer:
         no_sqz = ~sqz_on & ~sqz_off
 
         # Calculate momentum value using linear regression
-        momentum = self._calculate_momentum(df, self.bb_length)
+        momentum = self._calculate_momentum(df, self.kc_length)
 
         # Analyze momentum values
         start_idx = min_length
@@ -193,7 +194,7 @@ class SqueezeAnalyzer:
     def _calculate_momentum(self, df: pd.DataFrame, length: int) -> np.ndarray:
         """
         Calculate momentum using linear regression
-        Based on: linreg(source - avg(avg(highest(high, length), lowest(low, length)), sma(close, length)), length, 0)
+        Based on: linreg(source - avg(avg(highest(high, lengthKC), lowest(low, lengthKC)), sma(close, lengthKC)), lengthKC, 0)
         """
         closes = df['Close'].values
         highs = df['High'].values
