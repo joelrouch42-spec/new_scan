@@ -260,11 +260,6 @@ class StockScanner:
         if not common_indices:
             return buy_signals, sell_signals
 
-        # LOG HEADER
-        print("\n" + "="*120)
-        print(f"{'Date':<12} {'Close':>8} {'SQZ':>7} {'MACD':>5} {'ADX':>6} {'Trend':>6} {'CombG':>6} {'CombR':>6} {'Signal':<20}")
-        print("="*120)
-
         # Calculer combined pour tous les indices d'abord
         # IMPORTANT: combined = sqz + macd SEULEMENT (sans ADX), comme dans Pine
         combined_states = {}
@@ -297,28 +292,13 @@ class StockScanner:
             curr = combined_states[idx]
             prev = combined_states[prev_idx]
 
-            signal = ''
-
             # Transition vers green ET ADX filtre
             if curr['combined_green'] and not prev['combined_green'] and curr['in_trend']:
                 buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
-                signal = '🟢 BUY SIGNAL'
 
             # Transition vers red ET ADX filtre
             if curr['combined_red'] and not prev['combined_red'] and curr['in_trend']:
                 sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
-                signal = '🔴 SELL SIGNAL'
-
-            # LOG: Afficher toutes les lignes où combined est true OU il y a un signal
-            if curr['combined_green'] or curr['combined_red'] or signal:
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else f"idx{idx}"
-                close = df.iloc[idx]['Close']
-
-                print(f"{date:<12} {close:>8.2f} {curr['sqz_color']:>7} {curr['macd_color']:>5} {curr['adx']:>6.1f} "
-                      f"{str(curr['in_trend']):>6} {str(curr['combined_green']):>6} {str(curr['combined_red']):>6} {signal:<20}")
-
-        print("="*120)
-        print(f"Total BUY signals: {len(buy_signals)}, SELL signals: {len(sell_signals)}\n")
 
         return buy_signals, sell_signals
 
