@@ -1,0 +1,66 @@
+//
+// Combined Squeeze Momentum + MACD Signal Indicator
+// Affiche une flèche VERTE quand les deux sont verts
+// Affiche une flèche ROUGE quand les deux sont rouges
+//
+study(shorttitle = "SQZMOM+MACD", title="Combined Squeeze & MACD Signals", overlay=true)
+
+// ========== SQUEEZE MOMENTUM ==========
+length = input(20, title="BB Length")
+mult = input(2.0, title="BB MultFactor")
+lengthKC = input(20, title="KC Length")
+multKC = input(1.5, title="KC MultFactor")
+useTrueRange = input(true, title="Use TrueRange (KC)")
+
+// Calculate BB
+source = close
+basis = sma(source, length)
+dev = mult * stdev(source, length)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+// Calculate KC
+ma = sma(source, lengthKC)
+range_val = useTrueRange ? tr : (high - low)
+rangema = sma(range_val, lengthKC)
+upperKC = ma + rangema * multKC
+lowerKC = ma - rangema * multKC
+
+sqzOn = (lowerBB > lowerKC) and (upperBB < upperKC)
+sqzOff = (lowerBB < lowerKC) and (upperBB > upperKC)
+noSqz = not sqzOn and not sqzOff
+
+val = linreg(source - avg(avg(highest(high, lengthKC), lowest(low, lengthKC)), sma(close, lengthKC)), lengthKC, 0)
+
+// Squeeze Momentum: lime (vert vif) ou red (rouge vif)
+sqz_isGreen = val > 0 and val > nz(val[1])
+sqz_isRed = val < 0 and val < nz(val[1])
+
+// ========== MACD ==========
+fastLength = input(12, minval=1, title="MACD Fast")
+slowLength = input(26, minval=1, title="MACD Slow")
+signalLength = input(9, minval=1, title="MACD Signal")
+
+fastMA = ema(source, fastLength)
+slowMA = ema(source, slowLength)
+macd = fastMA - slowMA
+signal = sma(macd, signalLength)
+
+// MACD: green when above signal, red when below
+macd_isGreen = macd >= signal
+macd_isRed = macd < signal
+
+// ========== COMBINED SIGNALS ==========
+// Flèche VERTE: Squeeze = lime (vert vif) ET MACD = green
+greenSignal = sqz_isGreen and macd_isGreen
+
+// Flèche ROUGE: Squeeze = red (rouge vif) ET MACD = red
+redSignal = sqz_isRed and macd_isRed
+
+// Plot arrows on chart
+plotshape(greenSignal, title="Buy Signal", location=location.belowbar, color=lime, style=shape.triangleup, size=size.small)
+plotshape(redSignal, title="Sell Signal", location=location.abovebar, color=red, style=shape.triangledown, size=size.small)
+
+// Alerts
+alertcondition(greenSignal, title="Green Signal", message="Squeeze LIME + MACD GREEN")
+alertcondition(redSignal, title="Red Signal", message="Squeeze RED + MACD RED")
