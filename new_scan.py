@@ -7,7 +7,8 @@ from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
 import argparse
 import plotly.graph_objects as go
-from smc_analyzer import SMCAnalyzer
+from plotly.subplots import make_subplots
+from squeeze_momentum_indicator import SqueezeMomentumIndicator
 import logging
 import yfinance as yf
 import warnings
@@ -18,7 +19,7 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 warnings.filterwarnings('ignore')
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, chart_symbol=None):
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, all_charts=False, nasdaq=False, crypto=False, test_candle_override=None):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -26,10 +27,6 @@ class StockScanner:
         self.indicators_config = self.settings.get('indicators', {})
 
         # Initialiser les analyzers selon les indicateurs activés
-        self.smc_analyzer = None
-        if self.indicators_config.get('smc', {}).get('enabled', False):
-            smc_config = self.indicators_config['smc']
-            self.smc_analyzer = SMCAnalyzer(smc_config)
 
         self.sr_analyzer = None
         if self.indicators_config.get('support_resistance', {}).get('enabled', False):
@@ -37,11 +34,6 @@ class StockScanner:
             sr_config = self.indicators_config['support_resistance']
             self.sr_analyzer = SRLevelsAnalyzer(sr_config)
 
-        self.macd_analyzer = None
-        if self.indicators_config.get('macd', {}).get('enabled', False):
-            from macd_analyzer import MACDAnalyzer
-            macd_config = self.indicators_config['macd']
-            self.macd_analyzer = MACDAnalyzer(macd_config)
 
         self.squeeze_analyzer = None
         if self.indicators_config.get('squeeze_momentum', {}).get('enabled', False):
@@ -50,15 +42,20 @@ class StockScanner:
             self.squeeze_analyzer = SqueezeAnalyzer(squeeze_config)
 
         self.adx_analyzer = None
-        if 'adx' in self.indicators_config:
+        if 'adx' in self.indicators_config and self.indicators_config['adx'].get('enabled', True):
             from adx_analyzer import ADXAnalyzer
             adx_config = self.indicators_config['adx']
             self.adx_analyzer = ADXAnalyzer(adx_config)
+
 
         self.mode = 'backtest' if is_backtest else 'realtime'
         self.data_folder = self.settings['data_folder']
         self.config_file = 'config.txt'
         self.chart_symbol = chart_symbol
+        self.all_charts = all_charts
+        self.nasdaq = nasdaq
+        self.crypto = crypto
+        self.test_candle_override = test_candle_override
 
 
     def get_data_filename(self, symbol, candle_nb, interval, date):
@@ -88,6 +85,70 @@ class StockScanner:
         ]
         return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
 
+    def get_crypto_symbols(self):
+        """Retourne la liste des cryptomonnaies et actions crypto-liées"""
+        symbols = [
+            # Essayer cryptos directes
+            'BTCUSD', 'ETHUSD', 'XRPUSD', 'ADAUSD', 'SOLUSD', 'DOTUSD', 'MATICUSD',
+            # Actions crypto-liées (qui fonctionnent)  
+            'MSTR', 'COIN', 'RIOT', 'MARA', 'CLSK', 'BITF', 'HUT', 'IREN'
+        ]
+        ibkr_symbols = [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
+        
+        # Ajouter les cryptos yfinance
+        crypto_yf = [
+            'XRP-USD', 'XDC-USD', 'BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 
+            'DOT-USD', 'MATIC-USD', 'AVAX-USD', 'LINK-USD', 'UNI-USD', 'LTC-USD',
+            'BCH-USD', 'XLM-USD', 'ALGO-USD', 'ATOM-USD', 'ICP-USD', 'APT-USD',
+            'NEAR-USD', 'FTM-USD', 'SAND-USD', 'MANA-USD', 'CRV-USD', 'AAVE-USD'
+        ]
+        yf_symbols = [{'symbol': s, 'provider': 'YFINANCE'} for s in crypto_yf]
+        
+        return ibkr_symbols + yf_symbols
+
+    def download_crypto_yfinance(self, symbol, candle_nb, interval):
+        """Télécharge les données crypto via yfinance"""
+        try:
+            import yfinance as yf
+            
+            # Mapping des intervalles
+            interval_map = {'1d': '1d', '1h': '1h', '5m': '5m'}
+            yf_interval = interval_map.get(interval, '1d')
+            
+            # Calculer la période
+            if candle_nb <= 7:
+                period = "7d"
+            elif candle_nb <= 30:
+                period = "1mo"
+            elif candle_nb <= 90:
+                period = "3mo"
+            elif candle_nb <= 180:
+                period = "6mo"
+            else:
+                period = "1y"
+            
+            # Télécharger
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=yf_interval)
+            
+            if df.empty:
+                return None
+                
+            # Limiter au nombre de bougies demandées
+            if len(df) > candle_nb:
+                df = df.tail(candle_nb)
+            
+            # Reset de l'index et renommage des colonnes
+            df = df.reset_index()
+            if 'Datetime' in df.columns:
+                df = df.rename(columns={'Datetime': 'Date'})
+            
+            return df
+            
+        except Exception as e:
+            print(f"Erreur téléchargement crypto {symbol}: {e}")
+            return None
+
     def load_watchlist(self):
         """Charge les symboles depuis le fichier de configuration"""
         symbols = []
@@ -114,6 +175,10 @@ class StockScanner:
 
             ib = IB()
             ib.connect(host, port, clientId=client_id)
+            
+            if not ib.isConnected():
+                print(f"❌ IBKR Gateway non connecté ({host}:{port})")
+                return None
 
             # Créer le contrat
             contract = Stock(symbol, 'SMART', 'USD')
@@ -126,15 +191,8 @@ class StockScanner:
             contract = qualified[0]
 
             # Calculer la durée
-            if interval == '1d':
-                duration_str = f"{candle_nb} D"
-                bar_size = "1 day"
-            elif interval == '1h':
-                duration_str = f"{candle_nb} S"
-                bar_size = "1 hour"
-            else:
-                duration_str = f"{candle_nb} D"
-                bar_size = "1 day"
+            duration_str = f"{candle_nb} D"
+            bar_size = "1 day"
 
             # Télécharger les données
             bars = ib.reqHistoricalData(
@@ -228,6 +286,7 @@ class StockScanner:
             df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
             return df
         except Exception as e:
+            print(f"❌ Erreur IBKR {symbol}: {e}")
             return None
         finally:
             # Restaurer stderr dans tous les cas
@@ -236,71 +295,52 @@ class StockScanner:
 
     def _generate_combined_signals(self, df):
         """
-        Génère les signaux combinés Squeeze + MACD + ADX
-        Logique exacte du Pine Script:
-        - BUY: Squeeze lime + MACD green + ADX > threshold (transition)
-        - SELL: Squeeze red + MACD red + ADX > threshold (transition)
+        Génère les signaux basés sur les croisements de zéro du Squeeze Momentum
         """
-        buy_signals = []
-        sell_signals = []
-
-        if not self.macd_analyzer or not self.squeeze_analyzer or not self.adx_analyzer:
-            return buy_signals, sell_signals
-
-        macd_result = self.macd_analyzer.analyze(df)
-        squeeze_result = self.squeeze_analyzer.analyze(df)
-        adx_result = self.adx_analyzer.analyze(df)
-
-        macd_by_idx = {v['index']: v for v in macd_result.get('values', [])}
-        squeeze_by_idx = {v['index']: v for v in squeeze_result.get('values', [])}
-        adx_by_idx = {v['index']: v for v in adx_result.get('values', [])}
-
-        common_indices = sorted(set(macd_by_idx.keys()) & set(squeeze_by_idx.keys()) & set(adx_by_idx.keys()))
-
-        if not common_indices:
-            return buy_signals, sell_signals
-
-        # Calculer combined pour tous les indices d'abord
-        # IMPORTANT: combined = sqz + macd SEULEMENT (sans ADX), comme dans Pine
-        combined_states = {}
-        for idx in common_indices:
-            sqz = squeeze_by_idx[idx]
-            macd = macd_by_idx[idx]
-            adx = adx_by_idx[idx]
-
-            sqz_green = sqz['color'] == 'lime'
-            sqz_red = sqz['color'] == 'red'
-            macd_green = macd['line_color'] == 'green'
-            macd_red = macd['line_color'] == 'red'
-            in_trend = adx['in_trend']
-
-            combined_states[idx] = {
-                'combined_green': sqz_green and macd_green,  # SANS ADX
-                'combined_red': sqz_red and macd_red,        # SANS ADX
-                'sqz_color': sqz['color'],
-                'macd_color': macd['line_color'],
-                'adx': adx['adx'],
-                'in_trend': in_trend
-            }
-
-        # Détecter les transitions en comparant avec la bougie IMMÉDIATEMENT précédente
-        # Puis filtrer par ADX au moment du signal
-        for i in range(1, len(common_indices)):
-            idx = common_indices[i]
-            prev_idx = common_indices[i-1]
-
-            curr = combined_states[idx]
-            prev = combined_states[prev_idx]
-
-            # Transition vers green ET ADX filtre
-            if curr['combined_green'] and not prev['combined_green'] and curr['in_trend']:
-                buy_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
-
-            # Transition vers red ET ADX filtre
-            if curr['combined_red'] and not prev['combined_red'] and curr['in_trend']:
-                sell_signals.append({'index': idx, 'price': df.iloc[idx]['Close']})
-
-        return buy_signals, sell_signals
+        result = {'buy_signals': [], 'sell_signals': []}
+        
+        # Utiliser Squeeze Momentum pour les signaux si activé
+        if self.indicators_config.get('squeeze_momentum', {}).get('enabled', False):
+            squeeze_config = self.indicators_config['squeeze_momentum']
+            squeeze_indicator = SqueezeMomentumIndicator(
+                bb_length=squeeze_config.get('bb_length', 20),
+                bb_mult=squeeze_config.get('bb_mult', 2.0),
+                kc_length=squeeze_config.get('kc_length', 20),
+                kc_mult=squeeze_config.get('kc_mult', 1.5),
+                use_true_range=squeeze_config.get('use_true_range', True)
+            )
+            
+            squeeze_result = squeeze_indicator.analyze(df)
+            
+            # Détecter les croisements de zéro et les valeurs à zéro
+            momentum = squeeze_result['momentum']
+            
+            for i in range(1, len(momentum)):
+                prev_momentum = momentum[i-1]
+                curr_momentum = momentum[i]
+                
+                # Skip si valeurs NaN
+                if prev_momentum is None or curr_momentum is None:
+                    continue
+                    
+                # Signal BUY: momentum passe de négatif à positif OU est exactement à zéro après être négatif
+                if (prev_momentum < 0 and curr_momentum >= 0) or (curr_momentum == 0 and prev_momentum < 0):
+                    result['buy_signals'].append({
+                        'index': i,
+                        'type': 'zero_cross_bullish',
+                        'momentum': curr_momentum
+                    })
+                
+                # Signal SELL: momentum passe de positif à négatif OU est exactement à zéro après être positif  
+                elif (prev_momentum > 0 and curr_momentum <= 0) or (curr_momentum == 0 and prev_momentum > 0):
+                    result['sell_signals'].append({
+                        'index': i,
+                        'type': 'zero_cross_bearish',
+                        'momentum': curr_momentum
+                    })
+        
+        
+        return result['buy_signals'], result['sell_signals']
 
 
     def generate_chart(self, symbol, df):
@@ -309,10 +349,16 @@ class StockScanner:
         chart_folder = 'chart'
         os.makedirs(chart_folder, exist_ok=True)
 
-        # Créer le graphique de chandelles
-        fig = go.Figure()
+        # Créer des subplots : prix en haut, momentum en bas
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.1,
+            subplot_titles=('Price & Indicators', 'Squeeze Momentum'),
+            row_heights=[0.7, 0.3]
+        )
 
-        # Ajouter les chandelles
+        # Ajouter les chandelles au premier subplot
         fig.add_trace(go.Candlestick(
             x=df['Date'] if 'Date' in df.columns else list(range(len(df))),
             open=df['Open'],
@@ -320,83 +366,9 @@ class StockScanner:
             low=df['Low'],
             close=df['Close'],
             name='Price'
-        ))
+        ), row=1, col=1)
 
         title_parts = [symbol]
-        bullish_count = 0
-        bearish_count = 0
-
-        # Ajouter SMC si activé
-        if self.smc_analyzer:
-            smc_result = self.smc_analyzer.analyze(df)
-            bullish_obs = smc_result['order_blocks']['bullish']
-            bearish_obs = smc_result['order_blocks']['bearish']
-            bullish_count = len(bullish_obs)
-            bearish_count = len(bearish_obs)
-
-            # Ajouter les zones BLEUES (Bullish Order Blocks)
-            for ob in bullish_obs:
-                idx = ob['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
-
-                # Zone rectangulaire qui s'étend jusqu'à la fin
-                fig.add_shape(
-                    type="rect",
-                    x0=date,
-                    x1=end_date,
-                    y0=ob['low'],
-                    y1=ob['high'],
-                    fillcolor="blue",
-                    opacity=0.2,
-                    layer="below",
-                    line_width=0,
-                )
-
-                # Label des prix à droite
-                mid_price = (ob['low'] + ob['high']) / 2
-                fig.add_annotation(
-                    x=end_date,
-                    y=mid_price,
-                    text=f"{ob['low']:.2f}-{ob['high']:.2f}",
-                    showarrow=False,
-                    xanchor="left",
-                    font=dict(color="white", size=14),
-                    bgcolor="rgba(0,0,255,0.3)"
-                )
-
-            # Ajouter les zones ROUGES (Bearish Order Blocks)
-            for ob in bearish_obs:
-                idx = ob['index']
-                date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-                end_date = df.iloc[-1]['Date'] if 'Date' in df.columns else len(df) - 1
-
-                # Zone rectangulaire qui s'étend jusqu'à la fin
-                fig.add_shape(
-                    type="rect",
-                    x0=date,
-                    x1=end_date,
-                    y0=ob['low'],
-                    y1=ob['high'],
-                    fillcolor="red",
-                    opacity=0.2,
-                    layer="below",
-                    line_width=0,
-                )
-
-                # Label des prix à droite
-                mid_price = (ob['low'] + ob['high']) / 2
-                fig.add_annotation(
-                    x=end_date,
-                    y=mid_price,
-                    text=f"{ob['low']:.2f}-{ob['high']:.2f}",
-                    showarrow=False,
-                    xanchor="left",
-                    font=dict(color="red", size=14),
-                    bgcolor="rgba(0,0,0,0.5)"
-                )
-
-            title_parts.append(f'OB (Bullish={bullish_count}, Bearish={bearish_count})')
 
         # Ajouter S/R si activé
         if self.sr_analyzer:
@@ -459,8 +431,8 @@ class StockScanner:
                 idx = break_info['index']
                 date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
 
-                # Ignorer les Bull Wick et Bear Wick
-                if break_info['type'] in ['bull_wick', 'bear_wick']:
+                # Ignorer les Bull Wick, Bear Wick, et Support Breaks
+                if break_info['type'] in ['bull_wick', 'bear_wick', 'support_break']:
                     continue
 
                 # Couleur et texte selon le type
@@ -494,63 +466,153 @@ class StockScanner:
 
             title_parts.append('S/R Levels')
 
-        # Signaux combinés Squeeze + MACD + ADX
-        buy_signals, sell_signals = self._generate_combined_signals(df)
 
-        # Afficher les signaux BUY
-        for signal in buy_signals:
-            idx = signal['index']
-            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-            arrow_y = signal['price'] * 0.985
-
+        # Ajouter Squeeze Momentum si activé
+        if self.indicators_config.get('squeeze_momentum', {}).get('enabled', False):
+            squeeze_config = self.indicators_config['squeeze_momentum']
+            squeeze_indicator = SqueezeMomentumIndicator(
+                bb_length=squeeze_config.get('bb_length', 20),
+                bb_mult=squeeze_config.get('bb_mult', 2.0),
+                kc_length=squeeze_config.get('kc_length', 20),
+                kc_mult=squeeze_config.get('kc_mult', 1.5),
+                use_true_range=squeeze_config.get('use_true_range', True)
+            )
+            
+            squeeze_result = squeeze_indicator.analyze(df)
+            x_axis = df['Date'] if 'Date' in df.columns else list(range(len(df)))
+            
+            # Ajouter l'histogramme momentum au deuxième subplot
+            momentum_values = squeeze_result['momentum']
+            momentum_colors = squeeze_result['momentum_colors']
+            
+            # Convertir les couleurs pour Plotly
+            color_map = {'lime': '#00FF00', 'green': '#008000', 'red': '#FF0000', 'maroon': '#800000', 'gray': '#808080'}
+            
+            for i, (momentum, color) in enumerate(zip(momentum_values, momentum_colors)):
+                if not pd.isna(momentum) and i < len(x_axis):
+                    fig.add_trace(go.Bar(
+                        x=[x_axis[i]],
+                        y=[momentum],
+                        marker_color=color_map.get(color, color),
+                        name='Momentum',
+                        showlegend=False,
+                        width=86400000 if 'Date' in df.columns else 0.8  # Width for daily bars
+                    ), row=2, col=1)
+            
+            # Ajouter ligne de zéro pour le momentum
             fig.add_trace(go.Scatter(
-                x=[date],
-                y=[arrow_y],
-                mode='markers',
-                marker=dict(
-                    size=16,
-                    color='lime',
-                    symbol='triangle-up',
-                    line=dict(width=2, color='green')
-                ),
-                name='BUY',
+                x=x_axis,
+                y=[0] * len(x_axis),
+                mode='lines',
+                line=dict(color='white', width=1),
+                name='Zero Line',
                 showlegend=False
-            ))
+            ), row=2, col=1)
+            
+            # Ajouter des dots LIME et MAROON selon les couleurs de momentum
+            momentum_colors = squeeze_result['momentum_colors']
+            momentum = squeeze_result['momentum']
+            
+            # Calculer position pour les dots (au milieu du range)
+            mid_prices = [(df.iloc[i]['High'] + df.iloc[i]['Low']) / 2 for i in range(len(df))]
+            
+            for i, color in enumerate(momentum_colors):
+                if i < len(x_axis):
+                    if color == 'lime':
+                        fig.add_trace(go.Scatter(
+                            x=[x_axis[i]],
+                            y=[mid_prices[i]],
+                            mode='markers',
+                            marker=dict(
+                                symbol='circle',
+                                size=8,
+                                color='lime',
+                                line=dict(width=1, color='white')
+                            ),
+                            name='LIME momentum',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=1, col=1)
+                    elif color == 'red':
+                        fig.add_trace(go.Scatter(
+                            x=[x_axis[i]],
+                            y=[mid_prices[i]],
+                            mode='markers',
+                            marker=dict(
+                                symbol='circle',
+                                size=8,
+                                color='red',
+                                line=dict(width=1, color='white')
+                            ),
+                            name='RED momentum',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=1, col=1)
+            
+            # Ajouter des flèches pour les croisements de zéro
+            for i in range(1, len(momentum)):
+                if i < len(x_axis):
+                    prev_momentum = momentum[i-1]
+                    curr_momentum = momentum[i]
+                    
+                    # Skip si valeurs NaN
+                    if prev_momentum is None or curr_momentum is None:
+                        continue
+                    
+                    # Flèche verte: momentum passe de négatif à positif
+                    if prev_momentum < 0 and curr_momentum >= 0:
+                        arrow_y = df.iloc[i-1]['Low'] - (df.iloc[i-1]['High'] - df.iloc[i-1]['Low']) * 0.1
+                        fig.add_trace(go.Scatter(
+                            x=[x_axis[i-1]],
+                            y=[arrow_y],
+                            mode='markers',
+                            marker=dict(
+                                symbol='triangle-up',
+                                size=30,
+                                color='lime',
+                                line=dict(width=2, color='green')
+                            ),
+                            name='Zero Cross UP',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=1, col=1)
+                    
+                    # Flèche rouge: momentum passe de positif à négatif
+                    elif prev_momentum > 0 and curr_momentum <= 0:
+                        arrow_y = df.iloc[i-1]['High'] + (df.iloc[i-1]['High'] - df.iloc[i-1]['Low']) * 0.1
+                        fig.add_trace(go.Scatter(
+                            x=[x_axis[i-1]],
+                            y=[arrow_y],
+                            mode='markers',
+                            marker=dict(
+                                symbol='triangle-down',
+                                size=30,
+                                color='red',
+                                line=dict(width=2, color='darkred')
+                            ),
+                            name='Zero Cross DOWN',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=1, col=1)
+            
+            title_parts.append('SqzMom')
 
-        # Afficher les signaux SELL
-        for signal in sell_signals:
-            idx = signal['index']
-            date = df.iloc[idx]['Date'] if 'Date' in df.columns else idx
-            arrow_y = signal['price'] * 1.015
 
-            fig.add_trace(go.Scatter(
-                x=[date],
-                y=[arrow_y],
-                mode='markers',
-                marker=dict(
-                    size=16,
-                    color='red',
-                    symbol='triangle-down',
-                    line=dict(width=2, color='darkred')
-                ),
-                name='SELL',
-                showlegend=False
-            ))
-
-        total_signals = len(buy_signals) + len(sell_signals)
-        if total_signals > 0:
-            title_parts.append(f'Combined Signals ({total_signals})')
 
         # Mise en forme
         chart_title = f"{' - '.join(title_parts)}"
         fig.update_layout(
             title=chart_title,
-            yaxis_title='Prix',
-            xaxis_title='Date',
             template='plotly_dark',
-            height=800,
-            xaxis_rangeslider_visible=False
+            height=900,
+            xaxis_rangeslider_visible=False,
+            hovermode='x unified'
         )
+        
+        # Mettre à jour les axes
+        fig.update_yaxes(title_text="Prix", row=1, col=1)
+        fig.update_yaxes(title_text="Momentum", row=2, col=1)
+        fig.update_xaxes(title_text="Date", row=2, col=1)
 
         # Ligne horizontale pour le prix actuel
         current_price = df.iloc[-1]['Close']
@@ -561,12 +623,14 @@ class StockScanner:
             xref="paper",
             y0=current_price,
             y1=current_price,
+            yref="y1",
             line=dict(color="yellow", width=2, dash="dash")
         )
         fig.add_annotation(
             x=1,
             xref="paper",
             y=current_price,
+            yref="y1",
             text=f"${current_price:.2f}",
             showarrow=False,
             xanchor="left",
@@ -599,9 +663,17 @@ class StockScanner:
         # Si --chart spécifié, utiliser directement le symbole
         if self.chart_symbol:
             watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
-        else:
-            # Scanner tous les stocks NASDAQ 100
+        elif self.nasdaq:
+            # Scanner NASDAQ 100
             watchlist = self.get_nasdaq100_symbols()
+        elif self.crypto:
+            # Scanner cryptomonnaies
+            watchlist = self.get_crypto_symbols()
+        else:
+            print("❌ Erreur: Veuillez spécifier soit --nasdaq soit --crypto")
+            print("   Exemple: python3 new_scan.py --nasdaq --backtest")
+            print("   Exemple: python3 new_scan.py --crypto --chart MSTR")
+            return
 
         print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles\n")
 
@@ -613,17 +685,37 @@ class StockScanner:
 
         for item in watchlist:
             symbol = item['symbol']
+            provider = item.get('provider', 'IBKR')
+            self.current_symbol = symbol  # Stocker pour multi-timeframe
             filename = self.get_data_filename(symbol, total_candles_needed, interval, today)
 
-            # Télécharge ou charge les données (backtest = toujours Yahoo)
+            # Télécharge ou charge les données
             if self.check_file_exists(filename):
                 df = pd.read_csv(filename)
             else:
-                df = self.download_yahoo_data(symbol, total_candles_needed, interval)
+                # Choisir la méthode selon le provider
+                if provider == 'YFINANCE':
+                    df = self.download_crypto_yfinance(symbol, total_candles_needed, interval)
+                else:
+                    # Utiliser IBKR pour backtest (limite: ~600 bougies max)
+                    candles_to_request = min(total_candles_needed, 600)
+                    df = self.download_ibkr_data(symbol, candles_to_request, interval)
+                
                 if df is not None:
                     df.to_csv(filename, index=False)
                 else:
-                    continue
+                    # Si téléchargement échoue, chercher un fichier de cache plus ancien
+                    cache_files = []
+                    import glob
+                    cache_pattern = os.path.join(self.data_folder, f"*_{symbol}_*.csv")
+                    cache_files = glob.glob(cache_pattern)
+                    
+                    if cache_files:
+                        # Prendre le fichier le plus récent
+                        latest_cache = max(cache_files, key=os.path.getmtime)
+                        df = pd.read_csv(latest_cache)
+                    else:
+                        continue
 
             if df is None or len(df) == 0:
                 continue
@@ -632,25 +724,33 @@ class StockScanner:
             current_price = df.iloc[-1]['Close']
             alert_triggered = False
 
-            # Alertes combinées Squeeze + MACD + ADX
+            # Analyser tout le DataFrame comme en realtime
             buy_signals, sell_signals = self._generate_combined_signals(df)
-            last_candle_idx = len(df) - 1
+            
+            # Filtrer les signaux selon la plage de test (depuis la fin)
+            total_candles = len(df)
+            if test_stop >= total_candles:
+                test_stop = total_candles - 1
+            
+            # Calculer les indices depuis la fin (bougie 0 = dernière)
+            start_idx = total_candles - test_stop - 1
+            end_idx = total_candles - test_start
+            
+            # Filtrer les signaux dans la plage
+            filtered_buy = [s for s in buy_signals if start_idx <= s['index'] < end_idx]
+            filtered_sell = [s for s in sell_signals if start_idx <= s['index'] < end_idx]
+            
+            total_signals = len(filtered_buy) + len(filtered_sell)
 
-            for signal in buy_signals:
-                if signal['index'] == last_candle_idx:
-                    print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (Squeeze LIME + MACD GREEN + ADX)")
-                    alert_triggered = True
-                    break
+            if total_signals > 0:
+                alert_triggered = True
+                
 
-            for signal in sell_signals:
-                if signal['index'] == last_candle_idx:
-                    print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (Squeeze RED + MACD RED + ADX)")
-                    alert_triggered = True
-                    break
-
-            # Générer le graphique si --chart spécifié OU si alerte déclenchée
-            if self.chart_symbol or alert_triggered:
-                self.generate_chart(symbol, df)
+            # Générer le graphique de la bougie 0 à test_stop
+            if self.chart_symbol or alert_triggered or self.all_charts:
+                # Afficher les dernières test_stop+1 bougies (0 à test_stop)
+                df_chart_range = df.tail(test_stop + 1).copy().reset_index(drop=True)
+                self.generate_chart(symbol, df_chart_range)
 
         print("\nScan terminé.")
 
@@ -663,12 +763,21 @@ class StockScanner:
         candle_nb = realtime_config['candle_nb']
         interval = realtime_config['interval']
         update_interval = realtime_config['update_interval_seconds']
+        test_candle = self.test_candle_override if self.test_candle_override is not None else realtime_config.get('test_candle', 0)
 
         # Créer le dossier data
         os.makedirs(self.data_folder, exist_ok=True)
 
-        # Scanne NASDAQ 100
-        watchlist = self.get_nasdaq100_symbols()
+        # Déterminer la watchlist selon les options
+        if self.nasdaq:
+            watchlist = self.get_nasdaq100_symbols()
+        elif self.crypto:
+            watchlist = self.get_crypto_symbols()
+        else:
+            print("❌ Erreur: Veuillez spécifier soit --nasdaq soit --crypto")
+            print("   Exemple: python3 new_scan.py --nasdaq --backtest")
+            print("   Exemple: python3 new_scan.py --crypto --realtime")
+            return
 
         print(f"Scanner realtime démarré - scanne {len(watchlist)} symboles toutes les {update_interval}s")
         print("Appuyez sur Ctrl+C pour arrêter\n")
@@ -679,18 +788,38 @@ class StockScanner:
                 today = now.strftime('%Y-%m-%d')
                 timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
 
-                print(f"=== Scan {timestamp} ===")
+                print(f"=== Scan {timestamp} (test_candle: {test_candle}) ===")
 
                 for item in watchlist:
                     symbol = item['symbol']
+                    provider = item.get('provider', 'IBKR')
                     filename = self.get_data_filename(symbol, candle_nb, interval, today)
 
-                    # Télécharge les données fraîches (realtime = toujours IBKR)
-                    df = self.download_ibkr_data(symbol, candle_nb, interval)
-                    if df is not None:
-                        df.to_csv(filename, index=False)
+                    # Si test_candle == 0, télécharger données fraîches, sinon utiliser cache
+                    if test_candle == 0:
+                        # Télécharge les données fraîches selon le provider
+                        if provider == 'YFINANCE':
+                            df = self.download_crypto_yfinance(symbol, candle_nb, interval)
+                        else:
+                            df = self.download_ibkr_data(symbol, candle_nb, interval)
+                        
+                        if df is not None:
+                            df.to_csv(filename, index=False)
+                        else:
+                            continue
                     else:
-                        continue
+                        # Utiliser les fichiers de cache pour tester les bougies historiques
+                        cache_files = []
+                        import glob
+                        cache_pattern = os.path.join(self.data_folder, f"*_{symbol}_*.csv")
+                        cache_files = glob.glob(cache_pattern)
+                        
+                        if cache_files:
+                            # Prendre le fichier le plus récent
+                            latest_cache = max(cache_files, key=os.path.getmtime)
+                            df = pd.read_csv(latest_cache)
+                        else:
+                            continue
 
                     if df is None or len(df) == 0:
                         continue
@@ -701,17 +830,35 @@ class StockScanner:
 
                     # Alertes combinées Squeeze + MACD + ADX
                     buy_signals, sell_signals = self._generate_combined_signals(df)
-                    last_candle_idx = len(df) - 1
+                    target_candle_idx = len(df) - 1 - test_candle
 
                     for signal in buy_signals:
-                        if signal['index'] == last_candle_idx:
-                            print(f"🟢 {symbol} @ ${current_price:.2f} - BUY (Squeeze LIME + MACD GREEN + ADX)")
+                        if signal['index'] == target_candle_idx:
+                            signal_date = df.iloc[signal['index']]['Date'] if 'Date' in df.columns else f"Index {signal['index']}"
+                            print(f"🟢 BUY {symbol} @ ${current_price:.2f} - {signal_date}")
+                            
+                            # Placer l'ordre d'achat
+                            from trading_manager import TradingManager
+                            trader = TradingManager('settings.json')
+                            if trader.connect():
+                                trader.smart_trade(symbol, 'BUY')
+                                trader.disconnect()
+                            
                             alert_triggered = True
                             break
 
                     for signal in sell_signals:
-                        if signal['index'] == last_candle_idx:
-                            print(f"🔴 {symbol} @ ${current_price:.2f} - SELL (Squeeze RED + MACD RED + ADX)")
+                        if signal['index'] == target_candle_idx:
+                            signal_date = df.iloc[signal['index']]['Date'] if 'Date' in df.columns else f"Index {signal['index']}"
+                            print(f"🔴 SELL {symbol} @ ${current_price:.2f} - {signal_date}")
+                            
+                            # Placer l'ordre de vente
+                            from trading_manager import TradingManager
+                            trader = TradingManager('settings.json')
+                            if trader.connect():
+                                trader.smart_trade(symbol, 'SELL')
+                                trader.disconnect()
+                            
                             alert_triggered = True
                             break
 
@@ -730,6 +877,24 @@ class StockScanner:
                 time.sleep(update_interval)
 
 
+    def cleanup_data(self):
+        """Supprime tous les fichiers dans data/ et chart/"""
+        import shutil
+        
+        folders_to_clean = ['data', 'chart']
+        
+        for folder in folders_to_clean:
+            if os.path.exists(folder):
+                try:
+                    shutil.rmtree(folder)
+                    print(f"Dossier {folder}/ supprimé")
+                except Exception as e:
+                    print(f"Erreur lors de la suppression de {folder}/: {e}")
+            else:
+                print(f"Dossier {folder}/ n'existe pas")
+        
+        print("Nettoyage terminé.")
+
     def run(self):
         """Point d'entrée principal"""
         if self.mode == 'backtest':
@@ -744,7 +909,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Scanner de stocks avec Order Blocks')
     parser.add_argument('--backtest', action='store_true', help='Lance en mode backtest')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Génère un graphique pour le symbole (ex: --chart AAPL)')
+    parser.add_argument('--allcharts', action='store_true', help='Génère des graphiques pour tous les symboles (utiliser avec --backtest)')
+    parser.add_argument('--nasdaq', action='store_true', help='Scanne les symboles NASDAQ 100')
+    parser.add_argument('--crypto', action='store_true', help='Scanne les principales cryptomonnaies')
+    parser.add_argument('--cleanup', action='store_true', help='Supprime tous les fichiers dans data/ et chart/')
+    parser.add_argument('--test_candle', type=int, metavar='N', help='Override test_candle setting (default: read from JSON)')
     args = parser.parse_args()
 
-    scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart)
-    scanner.run()
+    if args.cleanup:
+        # Create scanner instance just for cleanup
+        scanner = StockScanner('settings.json')
+        scanner.cleanup_data()
+    else:
+        scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, all_charts=args.allcharts, nasdaq=args.nasdaq, crypto=args.crypto, test_candle_override=args.test_candle)
+        scanner.run()

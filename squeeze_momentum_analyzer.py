@@ -192,12 +192,13 @@ class SqueezeAnalyzer:
 
     def _calculate_momentum(self, df: pd.DataFrame, length: int) -> np.ndarray:
         """
-        Calculate momentum using linear regression
-        Based on: linreg(source - avg(avg(highest(high, lengthKC), lowest(low, lengthKC)), sma(close, lengthKC)), lengthKC, 0)
+        Calculate momentum using Pine Script's exact linear regression implementation
+        Pine Script: linreg(source - avg(avg(highest(high, length), lowest(low, length)), sma(close, length)), length, 0)
         """
         closes = df['Close'].values
         highs = df['High'].values
         lows = df['Low'].values
+        
 
         momentum = np.zeros(len(df))
 
@@ -207,39 +208,61 @@ class SqueezeAnalyzer:
             window_lows = lows[i - length + 1:i + 1]
             window_closes = closes[i - length + 1:i + 1]
 
-            # Calculate highest and lowest
+            # Pine Script calculation exactly:
+            # highest(high, length)
             highest_high = np.max(window_highs)
+            # lowest(low, length)
             lowest_low = np.min(window_lows)
-
-            # Calculate average of highest and lowest
+            # avg(highest, lowest)
             avg_hl = (highest_high + lowest_low) / 2
-
-            # Calculate SMA of close
+            # sma(close, length)
             sma_close = np.mean(window_closes)
-
-            # Average of both
+            # avg(avg_hl, sma_close)
             avg_val = (avg_hl + sma_close) / 2
 
-            # Calculate source - avg
+            # source - avg_val (this is what we regress on)
             source_vals = window_closes - avg_val
 
-            # Linear regression (slope at current point)
-            # y = mx + b, we want the value at the most recent point
-            x = np.arange(length)
-
-            # Linear regression using least squares
-            x_mean = np.mean(x)
-            y_mean = np.mean(source_vals)
-
-            numerator = np.sum((x - x_mean) * (source_vals - y_mean))
-            denominator = np.sum((x - x_mean) ** 2)
-
-            if denominator != 0:
-                slope = numerator / denominator
-                intercept = y_mean - slope * x_mean
-                # Value at offset 0 (most recent) is at x = length - 1
-                momentum[i] = slope * (length - 1) + intercept
-            else:
-                momentum[i] = 0
+            # Pine Script ta.linreg() exact implementation
+            # This calculates linear regression and returns the value at offset 0 (current bar)
+            momentum[i] = self._pine_linreg(source_vals, length, 0)
 
         return momentum
+
+    def _pine_linreg(self, src: np.ndarray, length: int, offset: int) -> float:
+        """
+        Exact Pine Script ta.linreg() implementation
+        Calculates linear regression and returns value at specified offset
+        """
+        if len(src) != length:
+            return 0.0
+        
+        if length <= 1:
+            return 0.0
+            
+        # Pine Script ta.linreg() exact implementation
+        x = np.arange(length, dtype=float)  # 0, 1, 2, ..., length-1
+        y = np.array(src, dtype=float)
+        
+        # Standard linear regression calculation
+        n = float(length)
+        sum_x = np.sum(x)
+        sum_y = np.sum(y) 
+        sum_xx = np.sum(x * x)
+        sum_xy = np.sum(x * y)
+        
+        # Calculate slope and intercept
+        denominator = n * sum_xx - sum_x * sum_x
+        if abs(denominator) < 1e-10:
+            return 0.0
+            
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        intercept = (sum_y - slope * sum_x) / n
+        
+        # Calculate value at specified offset
+        # offset=0 means current bar, which is at x = length-1
+        target_x = length - 1 - offset
+        regression_value = slope * target_x + intercept
+        
+        # Return raw regression value (price adjustment applied above if needed)
+        return regression_value

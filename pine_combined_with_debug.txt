@@ -91,3 +91,4 @@ if greenSignal
 
 if redSignal
     alert("🔴 VENTE: Squeeze RED + MACD RED + ADX=" + str.tostring(adx, "#.##"), alert.freq_once_per_bar)
+
