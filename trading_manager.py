@@ -271,6 +271,7 @@ class TradingManager:
         """Affiche le résumé des profits/pertes"""
         unrealized_pnl = 0
         realized_pnl = 0
+        interest = 0
         
         for value in account_values:
             if value.currency == 'USD':
@@ -278,13 +279,20 @@ class TradingManager:
                     unrealized_pnl = float(value.value)
                 elif value.tag == 'RealizedPnL':
                     realized_pnl = float(value.value)
+                elif value.tag in ['AccruedCash', 'AccruedDividend']:
+                    interest += float(value.value)
         
         print(f"📈 Unrealized PnL: ${unrealized_pnl:,.2f}")
         print(f"💵 Realized PnL: ${realized_pnl:,.2f}")
+        print(f"💰 Interest/Dividends: ${interest:,.2f}")
         
         total_pnl = unrealized_pnl + realized_pnl
         color = "🟢" if total_pnl >= 0 else "🔴"
-        print(f"{color} Total PnL: ${total_pnl:,.2f}")
+        print(f"{color} Trading PnL: ${total_pnl:,.2f}")
+        
+        total_with_interest = total_pnl + interest
+        color_total = "🟢" if total_with_interest >= 0 else "🔴"
+        print(f"{color_total} Total (with interest): ${total_with_interest:,.2f}")
 
 
 # Test du module

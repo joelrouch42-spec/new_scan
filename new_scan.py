@@ -675,7 +675,7 @@ class StockScanner:
             print("   Exemple: python3 new_scan.py --crypto --chart MSTR")
             return
 
-        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles\n")
+        print(f"Scanner backtest démarré - scanne {len(watchlist)} symboles (all_charts: {self.all_charts})\n")
 
         now = datetime.now(ZoneInfo('America/New_York'))
         today = now.strftime('%Y-%m-%d')
@@ -745,9 +745,8 @@ class StockScanner:
             if total_signals > 0:
                 alert_triggered = True
                 
-
             # Générer le graphique de la bougie 0 à test_stop
-            if self.chart_symbol or alert_triggered or self.all_charts:
+            if self.chart_symbol or self.all_charts or alert_triggered:
                 # Afficher les dernières test_stop+1 bougies (0 à test_stop)
                 df_chart_range = df.tail(test_stop + 1).copy().reset_index(drop=True)
                 self.generate_chart(symbol, df_chart_range)
@@ -838,11 +837,12 @@ class StockScanner:
                             print(f"🟢 BUY {symbol} @ ${current_price:.2f} - {signal_date}")
                             
                             # Placer l'ordre d'achat
-                            from trading_manager import TradingManager
-                            trader = TradingManager('settings.json')
-                            if trader.connect():
-                                trader.smart_trade(symbol, 'BUY')
-                                trader.disconnect()
+                            if self.mode == 'realtime':
+                                from trading_manager import TradingManager
+                                trader = TradingManager('settings.json')
+                                if trader.connect():
+                                    trader.smart_trade(symbol, 'BUY')
+                                    trader.disconnect()
                             
                             alert_triggered = True
                             break
@@ -853,11 +853,12 @@ class StockScanner:
                             print(f"🔴 SELL {symbol} @ ${current_price:.2f} - {signal_date}")
                             
                             # Placer l'ordre de vente
-                            from trading_manager import TradingManager
-                            trader = TradingManager('settings.json')
-                            if trader.connect():
-                                trader.smart_trade(symbol, 'SELL')
-                                trader.disconnect()
+                            if self.mode == 'realtime':
+                                from trading_manager import TradingManager
+                                trader = TradingManager('settings.json')
+                                if trader.connect():
+                                    trader.smart_trade(symbol, 'SELL')
+                                    trader.disconnect()
                             
                             alert_triggered = True
                             break
@@ -921,5 +922,7 @@ if __name__ == '__main__':
         scanner = StockScanner('settings.json')
         scanner.cleanup_data()
     else:
-        scanner = StockScanner('settings.json', is_backtest=args.backtest, chart_symbol=args.chart, all_charts=args.allcharts, nasdaq=args.nasdaq, crypto=args.crypto, test_candle_override=args.test_candle)
+        # --chart ou --allcharts impliquent automatiquement --backtest
+        is_backtest = args.backtest or bool(args.chart) or args.allcharts
+        scanner = StockScanner('settings.json', is_backtest=is_backtest, chart_symbol=args.chart, all_charts=args.allcharts, nasdaq=args.nasdaq, crypto=args.crypto, test_candle_override=args.test_candle)
         scanner.run()
