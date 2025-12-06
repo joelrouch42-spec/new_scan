@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Système de Trading Automatisé</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #7f8c8d;
+            margin-top: 25px;
+        }
+        .flow-box {
+            background: #ecf0f1;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+        }
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+        .json-block {
+            background: #27ae60;
+            color: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .warning {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success {
+            background: #27ae60;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .info {
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #bdc3c7;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #34495e;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #ecf0f1;
+        }
+        .toc {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .toc ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 SYSTÈME DE TRADING AUTOMATISÉ</h1>
+        <h2>Documentation Technique Complète</h2>
+        
+        <div class="toc">
+            <h3>📋 Table des Matières</h3>
+            <ul>
+                <li><a href="#overview">1. Vue d'Ensemble</a></li>
+                <li><a href="#architecture">2. Architecture du Système</a></li>
+                <li><a href="#flow-principal">3. Flow Principal</a></li>
+                <li><a href="#premier-scan">4. Premier Scan de la Journée</a></li>
+                <li><a href="#scan-continu">5. Scans Continus</a></li>
+                <li><a href="#stop-loss">6. Gestion Stop-Loss</a></li>
+                <li><a href="#signaux">7. Détection des Signaux</a></li>
+                <li><a href="#configuration">8. Configuration</a></li>
+                <li><a href="#structures">9. Structures de Données</a></li>
+                <li><a href="#cpp-implementation">10. Implémentation C++</a></li>
+            </ul>
+        </div>
+
+        <div id="overview">
+            <h2>1. 🎯 VUE D'ENSEMBLE</h2>
+            
+            <div class="info">
+                <strong>Objectif:</strong> Scanner automatiquement les marchés financiers, détecter des signaux de trading basés sur des indicateurs techniques, et exécuter des ordres via Interactive Brokers (IBKR).
+            </div>
+
+            <h3>Fonctionnalités Principales</h3>
+            <ul>
+                <li>🔄 <strong>Scanning temps réel</strong> de 100+ symboles (NASDAQ 100, crypto)</li>
+                <li>📈 <strong>Indicateur technique</strong>: Squeeze Momentum (LazyBear)</li>
+                <li>🎯 <strong>Signaux couleur</strong> basés sur changements de momentum</li>
+                <li>🛡️ <strong>Stop-Loss intelligent</strong> avec gestion différenciée ouverture/continu</li>
+                <li>📊 <strong>Trading automatisé</strong> via IBKR avec gestion des positions</li>
+                <li>📁 <strong>Tracking complet</strong> des positions et niveaux SL</li>
+                <li>📉 <strong>Génération de graphiques</strong> pour visualisation des signaux</li>
+            </ul>
+        </div>
+
+        <div id="architecture">
+            <h2>2. 🏗️ ARCHITECTURE DU SYSTÈME</h2>
+            
+            <h3>Structure des Fichiers</h3>
+            <table>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Rôle</th>
+                    <th>Type</th>
+                </tr>
+                <tr>
+                    <td><code>new_scan.py</code></td>
+                    <td>Orchestrateur principal - Scanner et coordination</td>
+                    <td>Core</td>
+                </tr>
+                <tr>
+                    <td><code>trading_manager.py</code></td>
+                    <td>Gestion trading IBKR, ordres, positions, SL</td>
+                    <td>Core</td>
+                </tr>
+                <tr>
+                    <td><code>squeeze_momentum_indicator.py</code></td>
+                    <td>Indicateur Squeeze Momentum (LazyBear)</td>
+                    <td>Indicateur</td>
+                </tr>
+                <tr>
+                    <td><code>settings.json</code></td>
+                    <td>Configuration générale du système</td>
+                    <td>Config</td>
+                </tr>
+                <tr>
+                    <td><code>trading_settings.json</code></td>
+                    <td>Configuration trading (tailles, SL, ordres)</td>
+                    <td>Config</td>
+                </tr>
+                <tr>
+                    <td><code>scan_status.json</code></td>
+                    <td>État des scans quotidiens</td>
+                    <td>Runtime</td>
+                </tr>
+                <tr>
+                    <td><code>position_tracking.json</code></td>
+                    <td>Tracking positions et niveaux SL</td>
+                    <td>Runtime</td>
+                </tr>
+            </table>
+
+            <h3>Watchlists Dynamiques</h3>
+            <ul>
+                <li><strong>NASDAQ 100</strong>: Liste hardcodée dans <code>get_nasdaq100_symbols()</code> (100 symboles)</li>
+                <li><strong>Crypto</strong>: Liste hardcodée dans <code>get_crypto_symbols()</code> (BTC, ETH, actions crypto)</li>
+                <li><strong>Sélection</strong>: Via arguments <code>--nasdaq</code> ou <code>--crypto</code></li>
+            </ul>
+
+            <h3>Dépendances Externes</h3>
+            <ul>
+                <li><strong>Interactive Brokers</strong>: Connexion via <code>ib_insync</code></li>
+                <li><strong>Yahoo Finance</strong>: Données crypto via <code>yfinance</code></li>
+                <li><strong>Pandas</strong>: Manipulation de données</li>
+                <li><strong>Plotly</strong>: Génération de graphiques</li>
+            </ul>
+        </div>
+
+        <div id="flow-principal">
+            <h2>3. 🔄 FLOW PRINCIPAL</h2>
+            
+            <h3>Démarrage du Système</h3>
+            <div class="flow-box">
+DÉMARRAGE
+├── 1. Chargement configurations (settings.json, trading_settings.json)
+├── 2. Vérification scan_status.json → Détermination type de scan
+├── 3. Si nouvelle journée → Cleanup automatique (data/, chart/)
+├── 4. Génération watchlist dynamique (--nasdaq ou --crypto)
+├── 5. Connexion IBKR (si mode realtime)
+└── 6. Boucle scan infinie (intervalle configurable)
+            </div>
+
+            <h3>Cycle de Scan (Pour Chaque Symbole)</h3>
+            <div class="flow-box">
+POUR CHAQUE SYMBOLE:
+├── 1. Téléchargement données OHLC
+│   ├── Source IBKR (actions) ou YFinance (crypto)
+│   └── Cache local (data/YYYY-MM-DD_SYMBOL_CANDLES_INTERVAL.csv)
+│
+├── 2. Calcul Squeeze Momentum
+│   ├── Bollinger Bands (20, 2.0)
+│   ├── Keltner Channel (20, 1.5)
+│   └── Linear Regression Momentum
+│
+├── 3. Détection signaux couleur
+│   ├── Analyse changements couleur momentum (maroon=BUY, green=SELL)
+│   └── Filtrage sur bougie cible (test_candle)
+│
+├── 4. Détermination type de scan
+│   ├── Premier scan journée → SCAN OUVERTURE
+│   └── Scans suivants → SCAN CONTINU
+│
+├── 5. Gestion Stop-Loss (selon type)
+│   ├── OUVERTURE: SL exact + vérification signaux
+│   └── CONTINU: SL + tolérance + fermeture immédiate
+│
+├── 6. Exécution nouveaux signaux
+│   ├── Validation positions existantes
+│   ├── Calcul taille position
+│   ├── Passage ordre IBKR (si enabled=true)
+│   └── Sauvegarde tracking SL
+│
+└── 7. Génération graphiques (si signal détecté)
+            </div>
+        </div>
+
+        <div id="premier-scan">
+            <h2>4. 🌅 PREMIER SCAN DE LA JOURNÉE</h2>
+            
+            <div class="success">
+                <strong>Déclenchement:</strong> Premier lancement du jour OU scan_status.json.date != aujourd'hui
+            </div>
+
+            <h3>Séquence Complète</h3>
+            
+            <div class="flow-box">
+ÉTAPE 1: DÉTECTION NOUVELLE JOURNÉE
+├── Lecture scan_status.json
+├── Si scan_status.date < "2025-12-04":
+│   ├── 🗓️ Print "Nouvelle journée détectée"
+│   ├── cleanup_data() → Supprime data/ et chart/
+│   ├── makedirs("data/") → Recrée dossiers
+│   └── Mise à jour scan_status.json:
+│       {
+│         "date": "2025-12-04",
+│         "opening_scan_done": true
+│       }
+└── return TRUE → is_opening_scan = true
+            </div>
+
+            <div class="flow-box">
+ÉTAPE 2: TÉLÉCHARGEMENT DONNÉES (pour chaque symbole)
+├── Cache vide (cleanup effectué)
+├── filename = "data/2025-12-04_AAPL_200_1d.csv"
+├── df = download_ibkr_data("AAPL", 200, "1d")
+└── df.to_csv(filename) → Sauvegarde cache
+            </div>
+
+            <div class="flow-box">
+ÉTAPE 3: ANALYSE TECHNIQUE
+├── Calcul Squeeze Momentum
+│   ├── Bollinger Bands (20, 2.0)
+│   ├── Keltner Channel (20, 1.5)
+│   ├── Momentum = linreg(source_diff, 20)
+│   └── Couleurs: lime, green, red, maroon
+│
+├── Détection signaux couleur
+│   ├── BUY: momentum devient MAROON (increasing negative)
+│   ├── SELL: momentum devient GREEN (decreasing positive)
+│   └── Index du signal sur DataFrame
+│
+└── Filtrage bougie cible
+    ├── target_idx = len(df) - 1 - test_candle
+    └── Garde seulement signaux sur cette bougie
+            </div>
+
+            <div class="flow-box">
+ÉTAPE 4: GESTION STOP-LOSS OUVERTURE
+├── Connexion IBKR unique
+├── is_opening_scan = TRUE
+├── Prix ouverture = df.iloc[-1]['Open']
+├── current_prices = {symbol: {'Open': prix}}
+│
+├── Vérification SL touchés (première fois = vide)
+│   ├── sl_hits = check_sl_hits_opening(current_prices)
+│   └── return [] car position_tracking.json vide/inexistant
+│
+└── Pas de SL à traiter au premier scan
+            </div>
+
+            <div class="flow-box">
+ÉTAPE 5: EXÉCUTION SIGNAUX
+├── Signal détecté (ex: SELL AAPL)
+├── Print "🔴 SELL AAPL @ $279.34 - 2025-12-04"
+│
+├── Tentative trading
+│   ├── trader.connect() → "✅ Connecté"
+│   ├── trade_result = smart_trade("AAPL", "SELL")
+│   │   ├── can_trade("AAPL", "SELL") → Check position size
+│   │   ├── position_size = 0 (aucune position)
+│   │   ├── if shares <= 0: return None
+│   │   └── Print "❌ Aucune position à vendre"
+│   └── trader.disconnect() → "🔌 Déconnecté"
+│
+├── NOUVEAU: Calcul et sauvegarde SL AVANT smart_trade()
+├── handle_new_signal() → Sauvegarde dans position_tracking.json  
+├── trade_result = smart_trade() (peut échouer mais SL déjà sauvé)
+└── ✅ SL maintenant loggé même si ordre échoue
+            </div>
+
+            <h3>État Final Après Premier Scan</h3>
+            
+            <div class="json-block">
+// scan_status.json (créé/mis à jour)
+{
+  "date": "2025-12-04",
+  "opening_scan_done": true
+}
+
+// position_tracking.json (maintenant peuplé avec SL)
+{
+  "AAPL": {
+    "action": "SELL",
+    "sl_level": 276.85,
+    "entry_date": "2025-12-04"
+  },
+  "PEP": {
+    "action": "SELL", 
+    "sl_level": 145.20,
+    "entry_date": "2025-12-04"
+  }
+}
+
+// data/ (recréé avec caches)
+data/2025-12-04_AAPL_200_1d.csv
+data/2025-12-04_MSFT_200_1d.csv
+... (tous les symboles)
+            </div>
+
+            <div class="success">
+                <strong>✅ Solution Implémentée:</strong><br>
+                Sauvegarde SL séparée du succès du trade.<br>
+                Tous les signaux sont maintenant loggés dans JSON même si l'ordre échoue.<br>
+                <strong>Ordre:</strong> 1) Calcul SL → 2) Sauvegarde JSON → 3) Passage ordre IBKR
+            </div>
+        </div>
+
+        <div id="scan-continu">
+            <h2>5. 🔄 SCANS CONTINUS</h2>
+            
+            <div class="info">
+                <strong>Déclenchement:</strong> Tous les scans après le premier scan de la journée
+            </div>
+
+            <h3>Différences avec le Premier Scan</h3>
+            
+            <div class="flow-box">
+SCAN CONTINU (is_opening_scan = FALSE)
+├── Pas de cleanup
+├── Utilisation cache existant OU nouveaux téléchargements
+├── scan_status.json déjà marqué opening_scan_done = true
+│
+├── Gestion SL différente:
+│   ├── Prix temps réel = df.iloc[-1]['Close'] 
+│   ├── current_prices = {symbol: {'Current': prix}}
+│   ├── check_sl_hits_continuous(current_prices)
+│   │   ├── SL + tolérance 1%
+│   │   └── Fermeture immédiate si touché
+│   └── Pas de vérification nouveaux signaux
+│
+└── Nouveaux signaux traités normalement
+            </div>
+
+            <h3>Protection Crash (Scan Continu)</h3>
+            
+            <div class="code-block">
+// Logique SL avec tolérance
+if(action == "BUY") {
+    sl_with_tolerance = sl_level * (1 - tolerance/100);  // 1% plus bas
+    sl_hit = current_price <= sl_with_tolerance;
+} else { // SELL
+    sl_with_tolerance = sl_level * (1 + tolerance/100);  // 1% plus haut  
+    sl_hit = current_price >= sl_with_tolerance;
+}
+
+if(sl_hit) {
+    // Fermeture immédiate sans vérification signaux
+    opposite_action = (action == "BUY") ? "SELL" : "BUY";
+    smart_trade(symbol, opposite_action);
+    remove_position_tracking(symbol);
+    print("🚨 CRASH PROTECTION: position fermée");
+}
+            </div>
+        </div>
+
+        <div id="stop-loss">
+            <h2>6. 🛡️ GESTION STOP-LOSS</h2>
+            
+            <h3>Deux Modes de Fonctionnement</h3>
+            
+            <table>
+                <tr>
+                    <th>Aspect</th>
+                    <th>Scan Ouverture</th>
+                    <th>Scan Continu</th>
+                </tr>
+                <tr>
+                    <td><strong>Déclenchement</strong></td>
+                    <td>Premier scan du jour</td>
+                    <td>Scans suivants</td>
+                </tr>
+                <tr>
+                    <td><strong>Prix Utilisé</strong></td>
+                    <td>Prix d'ouverture (Open)</td>
+                    <td>Prix temps réel (Close)</td>
+                </tr>
+                <tr>
+                    <td><strong>SL Testé</strong></td>
+                    <td>Niveau exact (sans tolérance)</td>
+                    <td>Niveau + tolérance 1%</td>
+                </tr>
+                <tr>
+                    <td><strong>Si SL Touché</strong></td>
+                    <td>Vérifier nouveaux signaux → Garder ou fermer</td>
+                    <td>Fermeture immédiate</td>
+                </tr>
+                <tr>
+                    <td><strong>Objectif</strong></td>
+                    <td>Stratégie intelligente</td>
+                    <td>Protection crash</td>
+                </tr>
+            </table>
+
+            <h3>Calcul des Niveaux SL</h3>
+            
+            <div class="code-block">
+// Calcul SL selon direction
+function calculate_sl_level(action, high_signal, low_signal, 
+                           high_previous, low_previous) {
+    if(action == "BUY") {
+        // Position longue: SL = max des highs
+        return max(high_signal, high_previous);
+    } else { // SELL
+        // Position courte: SL = min des lows  
+        return min(low_signal, low_previous);
+    }
+}
+
+// Exemple concret:
+// Signal BUY sur bougie: High=180.50, Low=178.20
+// Bougie précédente: High=182.00, Low=179.10
+// SL = max(180.50, 182.00) = 182.00
+            </div>
+
+            <h3>Stratégie Intelligente (Scan Ouverture)</h3>
+            
+            <div class="flow-box">
+LOGIQUE AMZN OCTOBRE:
+├── Position BUY ouverte le 01/10 avec SL = 180.00
+├── 02/10: Prix ouverture = 174.50 (SL touché!)
+│   ├── Vérifier: Nouveau signal BUY aujourd'hui ? → OUI
+│   ├── Action: Garder position + Mettre à jour SL = 176.50
+│   └── Print "🔄 Nouveau signal BUY - SL mis à jour"
+│
+├── 03/10: Prix ouverture = 172.00 (SL touché!)
+│   ├── Vérifier: Nouveau signal BUY aujourd'hui ? → OUI  
+│   ├── Action: Garder position + Mettre à jour SL = 174.00
+│   └── Print "🔄 Nouveau signal BUY - SL mis à jour"
+│
+└── 04/10: Prix ouverture = 170.50 (SL touché!)
+    ├── Vérifier: Nouveau signal BUY aujourd'hui ? → NON
+    ├── Action: Fermer position (SELL)
+    └── Print "🚨 SL OUVERTURE déclenché: position fermée"
+            </div>
+
+            <h3>Tracking des Positions</h3>
+            
+            <div class="json-block">
+// position_tracking.json - Structure
+{
+  "AAPL": {
+    "action": "BUY",           // Direction position
+    "sl_level": 182.50,        // Niveau SL actuel
+    "entry_date": "2025-12-04" // Date d'entrée
+  },
+  "NVDA": {
+    "action": "SELL",
+    "sl_level": 118.20,
+    "entry_date": "2025-12-04"
+  }
+}
+            </div>
+        </div>
+
+        <div id="signaux">
+            <h2>7. 📊 DÉTECTION DES SIGNAUX</h2>
+            
+            <h3>Indicateur Squeeze Momentum (LazyBear)</h3>
+            
+            <div class="info">
+                Port exact du code Pine Script SQZMOM_LB de TradingView
+            </div>
+
+            <h3>Paramètres de l'Indicateur</h3>
+            <table>
+                <tr>
+                    <th>Paramètre</th>
+                    <th>Valeur</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>bb_length</td>
+                    <td>20</td>
+                    <td>Période Bollinger Bands</td>
+                </tr>
+                <tr>
+                    <td>bb_mult</td>
+                    <td>2.0</td>
+                    <td>Multiplicateur Bollinger Bands</td>
+                </tr>
+                <tr>
+                    <td>kc_length</td>
+                    <td>20</td>
+                    <td>Période Keltner Channel</td>
+                </tr>
+                <tr>
+                    <td>kc_mult</td>
+                    <td>1.5</td>
+                    <td>Multiplicateur Keltner Channel</td>
+                </tr>
+                <tr>
+                    <td>use_true_range</td>
+                    <td>true</td>
+                    <td>Utiliser True Range pour KC</td>
+                </tr>
+            </table>
+
+            <h3>Calcul du Momentum</h3>
+            
+            <div class="code-block">
+// Calcul source pour momentum
+highest_high = highest(high, kc_length);
+lowest_low = lowest(low, kc_length);
+sma_close = sma(close, kc_length);
+
+avg1 = (highest_high + lowest_low) / 2;
+avg2 = (avg1 + sma_close) / 2;
+
+source_diff = close - avg2;
+momentum = linreg(source_diff, kc_length);
+            </div>
+
+            <h3>Attribution des Couleurs</h3>
+            
+            <div class="code-block">
+function get_momentum_color(momentum_values) {
+    colors = [];
+    prev_val = 0;
+    
+    for(val in momentum_values) {
+        if(val > 0) {
+            if(val > prev_val) {
+                colors.append("lime");   // Increasing positive
+            } else {
+                colors.append("green");  // Decreasing positive ← SELL
+            }
+        } else {
+            if(val < prev_val) {
+                colors.append("red");     // Decreasing negative
+            } else {
+                colors.append("maroon"); // Increasing negative ← BUY
+            }
+        }
+        prev_val = val;
+    }
+    
+    return colors;
+}
+            </div>
+
+            <h3>Génération des Signaux</h3>
+            
+            <div class="code-block">
+function detect_signals(momentum, colors) {
+    signals = [];
+    
+    for(i = 1; i < colors.length; i++) {
+        prev_color = colors[i-1];
+        curr_color = colors[i];
+        
+        // BUY SIGNAL: Momentum devient MAROON
+        if(curr_color == "maroon" && prev_color != "maroon") {
+            signals.append({
+                index: i,
+                type: "bullish",
+                momentum: momentum[i],
+                color: curr_color
+            });
+        }
+        
+        // SELL SIGNAL: Momentum devient GREEN
+        if(curr_color == "green" && prev_color != "green") {
+            signals.append({
+                index: i,
+                type: "bearish", 
+                momentum: momentum[i],
+                color: curr_color
+            });
+        }
+    }
+    
+    return signals;
+}
+            </div>
+        </div>
+
+        <div id="configuration">
+            <h2>8. ⚙️ CONFIGURATION</h2>
+            
+            <h3>settings.json - Configuration Générale</h3>
+            
+            <div class="json-block">
+{
+  "data_folder": "data",
+  "backtest": {
+    "candle_nb": 200,
+    "interval": "1d",
+    "data_source": "ibkr",
+    "test_candle_start": 0,
+    "test_candle_stop": 100
+  },
+  "realtime": {
+    "candle_nb": 200,              // Nombre de bougies à télécharger
+    "interval": "1d",              // Intervalle (1d, 4h, 1h, etc.)
+    "update_interval_seconds": 60, // Fréquence de scan
+    "test_candle": 0,             // Bougie à analyser (0=dernière)
+    "ibkr_host": "127.0.0.1",     // IP IBKR Gateway
+    "ibkr_port": 4002,            // Port IBKR Gateway
+    "ibkr_client_id": 2           // ID client IBKR
+  },
+  "indicators": {
+    "squeeze_momentum": {
+      "enabled": true,
+      "bb_length": 20,
+      "bb_mult": 2.0,
+      "kc_length": 20,
+      "kc_mult": 1.5,
+      "use_true_range": true
+    }
+  }
+}
+            </div>
+
+            <h3>trading_settings.json - Configuration Trading</h3>
+            
+            <div class="json-block">
+{
+  "trading": {
+    "enabled": true,              // Activer/désactiver trading réel
+    "trade_percent": 10,          // % equity par trade (10% = $1000 sur $10k)
+    "sl_tolerance_percent": 1,    // Tolérance SL scan continu (1%)
+    "order_settings": {
+      "order_type": "MARKET",     // MARKET ou LIMIT
+      "time_in_force": "DAY",     // DAY, GTC, IOC, FOK
+      "outside_rth": false        // Trading hors heures
+    }
+  },
+  "account": {
+    "currency": "USD",
+    "min_equity": 1000,           // Equity minimum requis
+    "max_daily_loss": 500         // Perte max par jour (futur)
+  }
+}
+            </div>
+
+            <h3>Modes de Lancement</h3>
+            
+            <div class="code-block">
+# Scan temps réel NASDAQ 100
+python3 new_scan.py --nasdaq
+
+# Scan temps réel crypto
+python3 new_scan.py --crypto  
+
+# Backtest NASDAQ avec graphiques
+python3 new_scan.py --nasdaq --backtest --allcharts
+
+# Graphique spécifique
+python3 new_scan.py --chart AAPL --nasdaq
+
+# Nettoyage données
+python3 new_scan.py --cleanup
+            </div>
+        </div>
+
+        <div id="structures">
+            <h2>9. 📋 STRUCTURES DE DONNÉES</h2>
+            
+            <h3>Classes Principales (Python)</h3>
+            
+            <div class="code-block">
+class StockScanner:
+    def __init__(self, settings_file)
+    def run_realtime(self)
+    def run_backtest(self)
+    def _generate_combined_signals(self, df)  # Analyse Squeeze Momentum uniquement
+    def _is_opening_scan(self, symbol, df)
+    def generate_chart(self, symbol, df)
+    def cleanup_data(self)
+
+class TradingManager:
+    def __init__(self, settings_file, trading_settings_file)
+    def connect(self) -> bool
+    def disconnect(self)
+    def smart_trade(self, symbol, action, price=None) -> TradeResult
+    def check_sl_hits_opening(self, current_prices) -> List[SLHit]
+    def check_sl_hits_continuous(self, current_prices) -> List[SLHit]
+    def calculate_sl_level(self, symbol, action, high, low, prev_high, prev_low) -> float
+    def save_position_tracking(self, symbol, action, sl_level, entry_date)
+    def handle_new_signal(self, symbol, action, high, low, prev_high, prev_low, entry_date)
+
+class SqueezeMomentumIndicator:
+    def __init__(self, bb_length=20, bb_mult=2.0, kc_length=20, kc_mult=1.5, use_true_range=True)
+    def analyze(self, df) -> Dict
+    def calculate_bollinger_bands(self, closes) -> Tuple
+    def calculate_keltner_channel(self, highs, lows, closes) -> Tuple
+    def calculate_momentum_value(self, highs, lows, closes) -> np.array
+    def get_momentum_color(self, momentum) -> List[str]
+            </div>
+
+            <h3>Structures de Données Clés</h3>
+            
+            <div class="code-block">
+# Signal détecté
+Signal = {
+    'index': int,           # Position dans DataFrame
+    'type': str,           # 'bullish' ou 'bearish'
+    'momentum': float,     # Valeur momentum
+    'color': str,          # 'maroon', 'green', etc.
+    'source': str          # 'squeeze' uniquement
+}
+
+# Position SL touchée
+SLHit = {
+    'symbol': str,
+    'action': str,         # 'BUY' ou 'SELL'
+    'current_price': float,
+    'sl_level': float,
+    'sl_with_tolerance': float,
+    'reason': str          # 'opening_check' ou 'crash_protection'
+}
+
+# État position trackée
+PositionTracking = {
+    'action': str,         # 'BUY' ou 'SELL'
+    'sl_level': float,     # Niveau SL actuel
+    'entry_date': str      # Date d'entrée
+}
+            </div>
+        </div>
+
+        <div id="cpp-implementation">
+            <h2>10. 💻 IMPLÉMENTATION C++</h2>
+            
+            <h3>Architecture C++ Proposée</h3>
+            
+            <div class="code-block">
+// Classes principales
+class TradingSystem {
+private:
+    std::unique_ptr&lt;Scanner&gt; scanner;
+    std::unique_ptr&lt;TradingManager&gt; trading_manager;
+    std::unique_ptr&lt;ConfigManager&gt; config;
+    std::unique_ptr&lt;IBConnector&gt; ib_connector;
+    
+public:
+    bool initialize(const std::string&amp; config_file);
+    void run_realtime();
+    void run_backtest();
+    void shutdown();
+};
+
+class Scanner {
+private:
+    std::unique_ptr&lt;IndicatorEngine&gt; indicators;
+    std::unique_ptr&lt;DataManager&gt; data_manager;
+    
+public:
+    std::vector&lt;Symbol&gt; get_nasdaq100_symbols();
+    std::vector&lt;Symbol&gt; get_crypto_symbols();
+    void scan_symbols(const std::vector&lt;Symbol&gt;&amp; symbols);
+    std::vector&lt;Signal&gt; analyze_symbol(const std::string&amp; symbol);
+    bool is_opening_scan(const std::string&amp; symbol);
+};
+
+class TradingManager {
+private:
+    std::map&lt;std::string, Position&gt; positions;
+    std::unique_ptr&lt;SLManager&gt; sl_manager;
+    
+public:
+    TradeResult execute_trade(const std::string&amp; symbol, const std::string&amp; action);
+    void update_sl_levels(const std::vector&lt;Signal&gt;&amp; signals);
+    std::vector&lt;SLHit&gt; check_sl_hits(const std::map&lt;std::string, Price&gt;&amp; prices, ScanType type);
+};
+            </div>
+
+            <h3>Structures C++</h3>
+            
+            <div class="code-block">
+struct Signal {
+    int index;
+    SignalType type;           // enum: BULLISH, BEARISH
+    double momentum;
+    std::string color;
+    std::string source;        // "squeeze" uniquement
+};
+
+struct Position {
+    std::string symbol;
+    std::string action;        // "BUY" ou "SELL"
+    int shares;
+    double avg_cost;
+    double sl_level;
+    std::chrono::time_point&lt;std::chrono::system_clock&gt; entry_time;
+};
+
+struct Price {
+    double open;
+    double high;
+    double low;
+    double close;
+    long volume;
+    std::chrono::time_point&lt;std::chrono::system_clock&gt; timestamp;
+};
+
+class DataFrame {
+private:
+    std::vector&lt;Price&gt; data;
+    std::map&lt;std::string, std::vector&lt;double&gt;&gt; indicators;
+    
+public:
+    void add_indicator(const std::string&amp; name, const std::vector&lt;double&gt;&amp; values);
+    std::vector&lt;double&gt; get_column(const std::string&amp; column) const;
+    Price&amp; operator[](size_t index);
+    size_t size() const;
+};
+            </div>
+
+            <h3>Performance et Optimisations</h3>
+            
+            <ul>
+                <li><strong>Threading</strong>: Pool de threads pour scan parallèle des symboles</li>
+                <li><strong>SIMD</strong>: Instructions vectorielles pour calculs d'indicateurs</li>
+                <li><strong>Cache</strong>: Cache L1/L2 friendly pour données temps réel</li>
+                <li><strong>Mémoire</strong>: Smart pointers et RAII pour gestion mémoire</li>
+                <li><strong>Réseau</strong>: Connexions async pour IBKR et data feeds</li>
+            </ul>
+
+            <div class="code-block">
+// Exemple optimisation SIMD
+class SIMDIndicators {
+public:
+    static void calculate_sma_avx2(const double* input, double* output, 
+                                  size_t length, int period);
+    static void calculate_momentum_avx2(const double* highs, const double* lows,
+                                      const double* closes, double* output,
+                                      size_t length, int period);
+};
+
+// Exemple threading
+class ThreadedScanner {
+private:
+    std::unique_ptr&lt;ThreadPool&gt; thread_pool;
+    
+public:
+    void scan_symbols_parallel(const std::vector&lt;Symbol&gt;&amp; symbols) {
+        std::vector&lt;std::future&lt;ScanResult&gt;&gt; futures;
+        
+        for(const auto&amp; symbol : symbols) {
+            futures.emplace_back(
+                thread_pool-&gt;submit([this, symbol] {
+                    return scan_single_symbol(symbol);
+                })
+            );
+        }
+        
+        for(auto&amp; future : futures) {
+            process_scan_result(future.get());
+        }
+    }
+};
+            </div>
+        </div>
+
+        <div class="success">
+            <h3>📝 Résumé des Points Clés</h3>
+            <ol>
+                <li><strong>Premier scan</strong> = Cleanup + Scan ouverture + SL intelligent</li>
+                <li><strong>Scans continus</strong> = Protection crash avec tolérance</li>
+                <li><strong>Signaux couleur</strong> = MAROON (BUY) + GREEN (SELL)</li>
+                <li><strong>SL tracking</strong> = JSON persistent avec mise à jour dynamique</li>
+                <li><strong>Trading conditionnel</strong> = Flag enabled testé avant IBKR</li>
+                <li><strong>Architecture modulaire</strong> = Facilite port C++ optimisé</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

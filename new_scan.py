@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import pandas as pd
 from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
@@ -295,9 +295,10 @@ class StockScanner:
 
     def _generate_combined_signals(self, df):
         """
-        Génère les signaux basés sur les croisements de zéro du Squeeze Momentum
+        Génère les signaux basés sur Squeeze Momentum
         """
-        result = {'buy_signals': [], 'sell_signals': []}
+        buy_signals = []
+        sell_signals = []
         
         # Utiliser Squeeze Momentum pour les signaux si activé
         if self.indicators_config.get('squeeze_momentum', {}).get('enabled', False):
@@ -312,35 +313,14 @@ class StockScanner:
             
             squeeze_result = squeeze_indicator.analyze(df)
             
-            # Détecter les croisements de zéro et les valeurs à zéro
-            momentum = squeeze_result['momentum']
-            
-            for i in range(1, len(momentum)):
-                prev_momentum = momentum[i-1]
-                curr_momentum = momentum[i]
-                
-                # Skip si valeurs NaN
-                if prev_momentum is None or curr_momentum is None:
-                    continue
-                    
-                # Signal BUY: momentum passe de négatif à positif OU est exactement à zéro après être négatif
-                if (prev_momentum < 0 and curr_momentum >= 0) or (curr_momentum == 0 and prev_momentum < 0):
-                    result['buy_signals'].append({
-                        'index': i,
-                        'type': 'zero_cross_bullish',
-                        'momentum': curr_momentum
-                    })
-                
-                # Signal SELL: momentum passe de positif à négatif OU est exactement à zéro après être positif  
-                elif (prev_momentum > 0 and curr_momentum <= 0) or (curr_momentum == 0 and prev_momentum > 0):
-                    result['sell_signals'].append({
-                        'index': i,
-                        'type': 'zero_cross_bearish',
-                        'momentum': curr_momentum
-                    })
+            # Utiliser directement les signaux de l'indicateur
+            for signal in squeeze_result['signals']:
+                if signal['type'] == 'bullish':
+                    buy_signals.append(signal)
+                elif signal['type'] == 'bearish':
+                    sell_signals.append(signal)
         
-        
-        return result['buy_signals'], result['sell_signals']
+        return buy_signals, sell_signals
 
 
     def generate_chart(self, symbol, df):
@@ -370,8 +350,8 @@ class StockScanner:
 
         title_parts = [symbol]
 
-        # Ajouter S/R si activé
-        if self.sr_analyzer:
+        # S/R supprimé
+        if False and self.sr_analyzer:
             sr_result = self.sr_analyzer.analyze(df)
 
             # Ajouter toutes les lignes de résistance (rouge, pointillée)
@@ -509,91 +489,103 @@ class StockScanner:
                 showlegend=False
             ), row=2, col=1)
             
-            # Ajouter des dots LIME et MAROON selon les couleurs de momentum
-            momentum_colors = squeeze_result['momentum_colors']
-            momentum = squeeze_result['momentum']
             
-            # Calculer position pour les dots (au milieu du range)
-            mid_prices = [(df.iloc[i]['High'] + df.iloc[i]['Low']) / 2 for i in range(len(df))]
-            
-            for i, color in enumerate(momentum_colors):
+            # Ajouter des flèches pour les signaux de couleur
+            signals = squeeze_result['signals']
+            for signal in signals:
+                i = signal['index']
                 if i < len(x_axis):
-                    if color == 'lime':
-                        fig.add_trace(go.Scatter(
-                            x=[x_axis[i]],
-                            y=[mid_prices[i]],
-                            mode='markers',
-                            marker=dict(
-                                symbol='circle',
-                                size=8,
-                                color='lime',
-                                line=dict(width=1, color='white')
-                            ),
-                            name='LIME momentum',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ), row=1, col=1)
-                    elif color == 'red':
-                        fig.add_trace(go.Scatter(
-                            x=[x_axis[i]],
-                            y=[mid_prices[i]],
-                            mode='markers',
-                            marker=dict(
-                                symbol='circle',
-                                size=8,
-                                color='red',
-                                line=dict(width=1, color='white')
-                            ),
-                            name='RED momentum',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ), row=1, col=1)
-            
-            # Ajouter des flèches pour les croisements de zéro
-            for i in range(1, len(momentum)):
-                if i < len(x_axis):
-                    prev_momentum = momentum[i-1]
-                    curr_momentum = momentum[i]
+                    if signal['type'] == 'bullish':  # MAROON = BUY
+                        # arrow_y = df.iloc[i]['Low'] - (df.iloc[i]['High'] - df.iloc[i]['Low']) * 0.8
+                        # fig.add_trace(go.Scatter(
+                        #     x=[x_axis[i]],
+                        #     y=[arrow_y],
+                        #     mode='markers',
+                        #     marker=dict(
+                        #         symbol='triangle-up',
+                        #         size=15,
+                        #         color='lime',
+                        #         line=dict(width=1, color='green')
+                        #     ),
+                        #     name='BUY Signal',
+                        #     showlegend=False,
+                        #     hoverinfo='skip'
+                        # ), row=1, col=1)
+                        
+                        # SL pour BUY: min des bas de cette bougie et la précédente
+                        if i > 0:
+                            sl_level = min(df.iloc[i]['Low'], df.iloc[i-1]['Low'])
+                            # SL avec tolérance (1% plus bas par défaut)
+                            sl_tolerance = 1  # TODO: récupérer depuis trading_settings.json
+                            sl_with_tolerance = sl_level * (1 - sl_tolerance / 100)
+                            
+                            # Tracer ligne horizontale SL vers le passé
+                            fig.add_shape(
+                                type="line",
+                                x0=x_axis[max(i-2, 0)],  # 2 bougies vers la gauche
+                                x1=x_axis[i],
+                                y0=sl_level,
+                                y1=sl_level,
+                                line=dict(color="green", width=4, dash="solid"),
+                                row=1, col=1
+                            )
+                            
+                            # Tracer ligne de tolérance (pointillée)
+                            fig.add_shape(
+                                type="line",
+                                x0=x_axis[max(i-2, 0)],
+                                x1=x_axis[i],
+                                y0=sl_with_tolerance,
+                                y1=sl_with_tolerance,
+                                line=dict(color="lightgreen", width=2, dash="dot"),
+                                row=1, col=1
+                            )
                     
-                    # Skip si valeurs NaN
-                    if prev_momentum is None or curr_momentum is None:
-                        continue
-                    
-                    # Flèche verte: momentum passe de négatif à positif
-                    if prev_momentum < 0 and curr_momentum >= 0:
-                        arrow_y = df.iloc[i-1]['Low'] - (df.iloc[i-1]['High'] - df.iloc[i-1]['Low']) * 0.1
-                        fig.add_trace(go.Scatter(
-                            x=[x_axis[i-1]],
-                            y=[arrow_y],
-                            mode='markers',
-                            marker=dict(
-                                symbol='triangle-up',
-                                size=30,
-                                color='lime',
-                                line=dict(width=2, color='green')
-                            ),
-                            name='Zero Cross UP',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ), row=1, col=1)
-                    
-                    # Flèche rouge: momentum passe de positif à négatif
-                    elif prev_momentum > 0 and curr_momentum <= 0:
-                        arrow_y = df.iloc[i-1]['High'] + (df.iloc[i-1]['High'] - df.iloc[i-1]['Low']) * 0.1
-                        fig.add_trace(go.Scatter(
-                            x=[x_axis[i-1]],
-                            y=[arrow_y],
-                            mode='markers',
-                            marker=dict(
-                                symbol='triangle-down',
-                                size=30,
-                                color='red',
-                                line=dict(width=2, color='darkred')
-                            ),
-                            name='Zero Cross DOWN',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ), row=1, col=1)
+                    elif signal['type'] == 'bearish':  # GREEN = SELL
+                        # arrow_y = df.iloc[i]['High'] + (df.iloc[i]['High'] - df.iloc[i]['Low']) * 0.8
+                        # fig.add_trace(go.Scatter(
+                        #     x=[x_axis[i]],
+                        #     y=[arrow_y],
+                        #     mode='markers',
+                        #     marker=dict(
+                        #         symbol='triangle-down',
+                        #         size=15,
+                        #         color='red',
+                        #         line=dict(width=1, color='darkred')
+                        #     ),
+                        #     name='SELL Signal',
+                        #     showlegend=False,
+                        #     hoverinfo='skip'
+                        # ), row=1, col=1)
+                        
+                        # SL pour SELL: max des hauts de cette bougie et la précédente
+                        if i > 0:
+                            sl_level = max(df.iloc[i]['High'], df.iloc[i-1]['High'])
+                            # SL avec tolérance (1% plus haut par défaut)
+                            sl_tolerance = 1  # TODO: récupérer depuis trading_settings.json
+                            sl_with_tolerance = sl_level * (1 + sl_tolerance / 100)
+                            
+                            # Tracer ligne horizontale SL vers le passé
+                            fig.add_shape(
+                                type="line",
+                                x0=x_axis[max(i-2, 0)],  # 2 bougies vers la gauche
+                                x1=x_axis[i],
+                                y0=sl_level,
+                                y1=sl_level,
+                                line=dict(color="red", width=4, dash="solid"),
+                                row=1, col=1
+                            )
+                            
+                            # Tracer ligne de tolérance (pointillée)
+                            fig.add_shape(
+                                type="line",
+                                x0=x_axis[max(i-2, 0)],
+                                x1=x_axis[i],
+                                y0=sl_with_tolerance,
+                                y1=sl_with_tolerance,
+                                line=dict(color="lightcoral", width=2, dash="dot"),
+                                row=1, col=1
+                            )
             
             title_parts.append('SqzMom')
 
@@ -827,6 +819,86 @@ class StockScanner:
                     current_price = df.iloc[-1]['Close']
                     alert_triggered = False
 
+                    # Détecter si c'est le premier scan de l'ouverture (nouvelle bougie)
+                    is_opening_scan = self._is_opening_scan(symbol, df)
+                    
+                    # Gestion SL selon type de scan
+                    if self.mode == 'realtime' and test_candle == 0:
+                        from trading_manager import TradingManager
+                        trader = TradingManager('settings.json')
+                        if trader.connect():
+                            
+                            if is_opening_scan:
+                                # SCAN OUVERTURE: SL exact + vérification signaux + mise à jour JSON
+                                open_price = df.iloc[-1]['Open']
+                                current_prices = {symbol: {'Open': open_price}}
+                                
+                                sl_hits = trader.check_sl_hits_opening(current_prices)
+                                
+                                for sl_hit in sl_hits:
+                                    hit_symbol = sl_hit['symbol']
+                                    action = sl_hit['action']
+                                    
+                                    # Générer signaux pour vérifier nouveau signal même sens
+                                    buy_signals, sell_signals = self._generate_combined_signals(df)
+                                    target_candle_idx = len(df) - 1 - test_candle
+                                    
+                                    has_same_direction_signal = False
+                                    
+                                    if action == 'BUY':
+                                        for signal in buy_signals:
+                                            if signal['index'] == target_candle_idx:
+                                                has_same_direction_signal = True
+                                                # Mise à jour SL avec nouveau signal
+                                                signal_idx = signal['index']
+                                                high_price = df.iloc[signal_idx]['High']
+                                                low_price = df.iloc[signal_idx]['Low']
+                                                previous_high = df.iloc[signal_idx - 1]['High'] if signal_idx > 0 else high_price
+                                                previous_low = df.iloc[signal_idx - 1]['Low'] if signal_idx > 0 else low_price
+                                                trader.handle_new_signal(hit_symbol, 'BUY', high_price, low_price, previous_high, previous_low, timestamp)
+                                                print(f"🔄 Nouveau signal BUY {hit_symbol} - SL mis à jour")
+                                                break
+                                    else:  # SELL
+                                        for signal in sell_signals:
+                                            if signal['index'] == target_candle_idx:
+                                                has_same_direction_signal = True
+                                                # Mise à jour SL avec nouveau signal
+                                                signal_idx = signal['index']
+                                                high_price = df.iloc[signal_idx]['High']
+                                                low_price = df.iloc[signal_idx]['Low']
+                                                previous_high = df.iloc[signal_idx - 1]['High'] if signal_idx > 0 else high_price
+                                                previous_low = df.iloc[signal_idx - 1]['Low'] if signal_idx > 0 else low_price
+                                                trader.handle_new_signal(hit_symbol, 'SELL', high_price, low_price, previous_high, previous_low, timestamp)
+                                                print(f"🔄 Nouveau signal SELL {hit_symbol} - SL mis à jour")
+                                                break
+                                    
+                                    # Si pas de nouveau signal même sens: fermer position
+                                    if not has_same_direction_signal:
+                                        opposite_action = 'SELL' if action == 'BUY' else 'BUY'
+                                        trade_result = trader.smart_trade(hit_symbol, opposite_action)
+                                        if trade_result:
+                                            print(f"🚨 SL OUVERTURE déclenché: {hit_symbol} position fermée")
+                                            trader.remove_position_tracking(hit_symbol)
+                            
+                            else:
+                                # SCAN CONTINU: SL + tolérance, fermeture immédiate
+                                current_price = df.iloc[-1]['Close']  # Prix temps réel
+                                current_prices = {symbol: {'Current': current_price}}
+                                
+                                sl_hits = trader.check_sl_hits_continuous(current_prices)
+                                
+                                for sl_hit in sl_hits:
+                                    hit_symbol = sl_hit['symbol']
+                                    action = sl_hit['action']
+                                    opposite_action = 'SELL' if action == 'BUY' else 'BUY'
+                                    
+                                    trade_result = trader.smart_trade(hit_symbol, opposite_action)
+                                    if trade_result:
+                                        print(f"🚨 CRASH PROTECTION: {hit_symbol} position fermée immédiatement")
+                                        trader.remove_position_tracking(hit_symbol)
+                            
+                            trader.disconnect()
+                    
                     # Alertes combinées Squeeze + MACD + ADX
                     buy_signals, sell_signals = self._generate_combined_signals(df)
                     target_candle_idx = len(df) - 1 - test_candle
@@ -836,12 +908,30 @@ class StockScanner:
                             signal_date = df.iloc[signal['index']]['Date'] if 'Date' in df.columns else f"Index {signal['index']}"
                             print(f"🟢 BUY {symbol} @ ${current_price:.2f} - {signal_date}")
                             
-                            # Placer l'ordre d'achat
+                            # Calculer SL et gérer position
                             if self.mode == 'realtime':
                                 from trading_manager import TradingManager
                                 trader = TradingManager('settings.json')
                                 if trader.connect():
-                                    trader.smart_trade(symbol, 'BUY')
+                                    # TOUJOURS calculer et sauvegarder le SL (même si trade échoue)
+                                    signal_idx = signal['index']
+                                    high_price = df.iloc[signal_idx]['High']
+                                    low_price = df.iloc[signal_idx]['Low']
+                                    
+                                    if signal_idx > 0:
+                                        previous_high = df.iloc[signal_idx - 1]['High']
+                                        previous_low = df.iloc[signal_idx - 1]['Low']
+                                    else:
+                                        previous_high = high_price
+                                        previous_low = low_price
+                                    
+                                    entry_date = signal_date
+                                    trader.handle_new_signal(symbol, 'BUY', high_price, low_price, 
+                                                           previous_high, previous_low, entry_date)
+                                    
+                                    # Passer l'ordre d'achat (après sauvegarde SL)
+                                    trade_result = trader.smart_trade(symbol, 'BUY')
+                                    
                                     trader.disconnect()
                             
                             alert_triggered = True
@@ -852,12 +942,30 @@ class StockScanner:
                             signal_date = df.iloc[signal['index']]['Date'] if 'Date' in df.columns else f"Index {signal['index']}"
                             print(f"🔴 SELL {symbol} @ ${current_price:.2f} - {signal_date}")
                             
-                            # Placer l'ordre de vente
+                            # Calculer SL et gérer position
                             if self.mode == 'realtime':
                                 from trading_manager import TradingManager
                                 trader = TradingManager('settings.json')
                                 if trader.connect():
-                                    trader.smart_trade(symbol, 'SELL')
+                                    # TOUJOURS calculer et sauvegarder le SL (même si trade échoue)
+                                    signal_idx = signal['index']
+                                    high_price = df.iloc[signal_idx]['High']
+                                    low_price = df.iloc[signal_idx]['Low']
+                                    
+                                    if signal_idx > 0:
+                                        previous_high = df.iloc[signal_idx - 1]['High']
+                                        previous_low = df.iloc[signal_idx - 1]['Low']
+                                    else:
+                                        previous_high = high_price
+                                        previous_low = low_price
+                                    
+                                    entry_date = signal_date
+                                    trader.handle_new_signal(symbol, 'SELL', high_price, low_price,
+                                                           previous_high, previous_low, entry_date)
+                                    
+                                    # Passer l'ordre de vente (après sauvegarde SL)
+                                    trade_result = trader.smart_trade(symbol, 'SELL')
+                                    
                                     trader.disconnect()
                             
                             alert_triggered = True
@@ -895,6 +1003,59 @@ class StockScanner:
                 print(f"Dossier {folder}/ n'existe pas")
         
         print("Nettoyage terminé.")
+
+    def _is_opening_scan(self, symbol, df):
+        """
+        Détermine si c'est le premier scan du jour (scan d'ouverture) vs scan continu
+        
+        Utilise scan_status.json pour tracker si on a déjà fait le scan d'ouverture aujourd'hui
+        """
+        scan_status_file = 'scan_status.json'
+        today = datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d')
+        
+        try:
+            # Charger le status de scan
+            if os.path.exists(scan_status_file):
+                with open(scan_status_file, 'r') as f:
+                    scan_status = json.load(f)
+            else:
+                scan_status = {}
+            
+            # Vérifier si on a déjà fait le scan d'ouverture aujourd'hui
+            if scan_status.get('date') < today:
+                # Nouvelle journée - nettoyer les données et marquer comme scan d'ouverture
+                print(f"🗓️ Nouvelle journée détectée: {today}")
+                self.cleanup_data()
+                
+                # Recréer le dossier data après cleanup
+                os.makedirs(self.data_folder, exist_ok=True)
+                
+                # Marquer comme scanné
+                scan_status = {
+                    'date': today,
+                    'opening_scan_done': True
+                }
+                
+                with open(scan_status_file, 'w') as f:
+                    json.dump(scan_status, f, indent=2)
+                
+                return True  # Premier scan du jour
+            
+            elif not scan_status.get('opening_scan_done', False):
+                # Même jour mais pas encore fait le scan d'ouverture
+                scan_status['opening_scan_done'] = True
+                
+                with open(scan_status_file, 'w') as f:
+                    json.dump(scan_status, f, indent=2)
+                
+                return True  # Premier scan du jour
+            else:
+                # Déjà fait le scan d'ouverture aujourd'hui
+                return False  # Scan continu
+                
+        except Exception as e:
+            print(f"⚠️ Erreur vérification scan status: {e}")
+            return False  # En cas de doute, scan continu
 
     def run(self):
         """Point d'entrée principal"""

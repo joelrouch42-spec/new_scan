@@ -1,10 +1,11 @@
 {
   "trading": {
-    "enabled": false,
+    "enabled": true,
     "trade_percent": 10,
+    "sl_tolerance_percent": 1,
     "order_settings": {
       "order_type": "MARKET",
-      "time_in_force": "GTC",
+      "time_in_force": "DAY",
       "outside_rth": false
     }
   },

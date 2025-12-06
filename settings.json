@@ -31,11 +31,6 @@
       "kc_length": 20,
       "kc_mult": 1.5,
       "use_true_range": true
-    },
-    "adx": {
-      "enabled": false,
-      "length": 14,
-      "threshold": 25
     }
   }
 }

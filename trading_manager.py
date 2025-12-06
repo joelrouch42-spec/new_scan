@@ -18,6 +18,7 @@ class TradingManager:
         
         self.ib = IB()
         self.connected = False
+        self.positions_tracking_file = 'position_tracking.json'
     
     def connect(self):
         """Se connecter à IBKR Gateway"""
@@ -31,10 +32,8 @@ class TradingManager:
             
             if self.ib.isConnected():
                 self.connected = True
-                print(f"✅ Connecté à IBKR Gateway ({host}:{port})")
                 return True
             else:
-                print(f"❌ Échec de connexion IBKR ({host}:{port})")
                 return False
                 
         except Exception as e:
@@ -46,7 +45,6 @@ class TradingManager:
         if self.connected:
             self.ib.disconnect()
             self.connected = False
-            print("🔌 Déconnecté d'IBKR")
     
     def get_account_equity(self):
         """Lire l'equity du compte"""
@@ -189,9 +187,6 @@ class TradingManager:
             print("❌ Pas connecté à IBKR")
             return None
         
-        if not self.trading_settings['trading']['enabled']:
-            print("❌ Trading désactivé dans trading_settings.json")
-            return None
         
         if not self.can_trade(symbol, action):
             return None
@@ -229,7 +224,6 @@ class TradingManager:
                 # Pour SELL: vendre toute la position
                 shares = self.get_position_size(symbol)
                 if shares <= 0:
-                    print(f"❌ Aucune position à vendre pour {symbol}")
                     return None
             else:
                 print(f"❌ Action invalide: {action}")
@@ -250,6 +244,11 @@ class TradingManager:
             
             order.tif = time_in_force
             order.outsideRth = self.trading_settings['trading']['order_settings']['outside_rth']
+            
+            # Vérifier si trading activé JUSTE avant de passer l'ordre
+            if not self.trading_settings['trading']['enabled']:
+                print("❌ Trading désactivé - ordre simulé")
+                return True  # Retourner True pour continuer le logging
             
             # Passer l'ordre
             trade = self.ib.placeOrder(contract, order)
@@ -293,6 +292,274 @@ class TradingManager:
         total_with_interest = total_pnl + interest
         color_total = "🟢" if total_with_interest >= 0 else "🔴"
         print(f"{color_total} Total (with interest): ${total_with_interest:,.2f}")
+    
+    def save_position_tracking(self, symbol, action, sl_level, entry_date):
+        """Sauvegarde une nouvelle position avec son SL dans le fichier JSON"""
+        try:
+            # Charger le fichier existant ou créer nouveau dict
+            if os.path.exists(self.positions_tracking_file):
+                with open(self.positions_tracking_file, 'r') as f:
+                    positions = json.load(f)
+            else:
+                positions = {}
+            
+            # Ajouter/mettre à jour la position
+            positions[symbol] = {
+                'action': action,
+                'sl_level': sl_level,
+                'entry_date': entry_date
+            }
+            
+            # Sauvegarder
+            with open(self.positions_tracking_file, 'w') as f:
+                json.dump(positions, f, indent=2)
+            
+            print(f"📝 Position trackée: {symbol} {action} SL={sl_level:.2f}")
+            
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde position {symbol}: {e}")
+    
+    def update_sl_tracking(self, symbol, new_sl_level):
+        """Met à jour le SL d'une position existante"""
+        try:
+            if not os.path.exists(self.positions_tracking_file):
+                return False
+            
+            with open(self.positions_tracking_file, 'r') as f:
+                positions = json.load(f)
+            
+            if symbol in positions:
+                positions[symbol]['sl_level'] = new_sl_level
+                
+                with open(self.positions_tracking_file, 'w') as f:
+                    json.dump(positions, f, indent=2)
+                
+                print(f"🔄 SL mis à jour: {symbol} nouveau SL={new_sl_level:.2f}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ Erreur mise à jour SL {symbol}: {e}")
+            return False
+    
+    def check_sl_hits_continuous(self, current_prices):
+        """
+        Scan CONTINU: Protection crash avec tolérance - fermeture immédiate
+        
+        Args:
+            current_prices: dict {symbol: {'Current': prix_temps_reel}}
+            
+        Returns:
+            List des positions à fermer immédiatement
+        """
+        sl_hits = []
+        
+        try:
+            if not os.path.exists(self.positions_tracking_file):
+                return sl_hits
+            
+            with open(self.positions_tracking_file, 'r') as f:
+                tracked_positions = json.load(f)
+            
+            ibkr_positions = self.get_current_positions()
+            sl_tolerance = self.trading_settings['trading'].get('sl_tolerance_percent', 1)
+            
+            for symbol, tracking_info in tracked_positions.items():
+                if symbol not in ibkr_positions or symbol not in current_prices:
+                    continue
+                
+                current_price = current_prices[symbol]['Current']
+                sl_level = tracking_info['sl_level']
+                action = tracking_info['action']
+                
+                # SL AVEC tolérance pour protection crash
+                if action == 'BUY':
+                    sl_with_tolerance = sl_level * (1 - sl_tolerance / 100)
+                    sl_hit = current_price <= sl_with_tolerance
+                else:  # SELL
+                    sl_with_tolerance = sl_level * (1 + sl_tolerance / 100)
+                    sl_hit = current_price >= sl_with_tolerance
+                
+                if sl_hit:
+                    sl_hits.append({
+                        'symbol': symbol,
+                        'action': action,
+                        'current_price': current_price,
+                        'sl_level': sl_level,
+                        'sl_with_tolerance': sl_with_tolerance,
+                        'reason': 'crash_protection'
+                    })
+                    print(f"🚨 CRASH PROTECTION: {symbol} {action} prix={current_price:.2f} SL={sl_with_tolerance:.2f}")
+            
+            return sl_hits
+            
+        except Exception as e:
+            print(f"❌ Erreur scan continu SL: {e}")
+            return []
+    
+    def check_sl_hits_opening(self, current_prices):
+        """
+        Scan OUVERTURE: Nouvelle bougie avec SL exact - vérification signaux
+        
+        Args:
+            current_prices: dict {symbol: {'Open': prix_ouverture}}
+            
+        Returns:
+            List des positions où SL exact touché (pour vérification signaux)
+        """
+        sl_hits = []
+        
+        try:
+            if not os.path.exists(self.positions_tracking_file):
+                return sl_hits
+            
+            with open(self.positions_tracking_file, 'r') as f:
+                tracked_positions = json.load(f)
+            
+            ibkr_positions = self.get_current_positions()
+            
+            for symbol, tracking_info in tracked_positions.items():
+                if symbol not in ibkr_positions or symbol not in current_prices:
+                    continue
+                
+                current_price = current_prices[symbol]['Open']
+                sl_level = tracking_info['sl_level']
+                action = tracking_info['action']
+                
+                # SL EXACT (sans tolérance) pour scan ouverture
+                if action == 'BUY':
+                    sl_hit = current_price <= sl_level
+                else:  # SELL
+                    sl_hit = current_price >= sl_level
+                
+                if sl_hit:
+                    sl_hits.append({
+                        'symbol': symbol,
+                        'action': action,
+                        'current_price': current_price,
+                        'sl_level': sl_level,
+                        'reason': 'opening_check'
+                    })
+                    print(f"📊 OUVERTURE SL touché: {symbol} {action} prix={current_price:.2f} SL exact={sl_level:.2f}")
+            
+            return sl_hits
+            
+        except Exception as e:
+            print(f"❌ Erreur scan ouverture SL: {e}")
+            return []
+    
+    def calculate_sl_level(self, symbol, action, high_price, low_price, previous_high, previous_low):
+        """
+        Calcule le niveau de SL selon la logique définie:
+        - BUY: max(high de la bougie signal, high de la bougie précédente)  
+        - SELL: min(low de la bougie signal, low de la bougie précédente)
+        
+        Args:
+            symbol: Symbole de l'action
+            action: 'BUY' ou 'SELL'
+            high_price: High de la bougie du signal
+            low_price: Low de la bougie du signal
+            previous_high: High de la bougie précédente
+            previous_low: Low de la bougie précédente
+            
+        Returns:
+            float: Niveau de SL calculé
+        """
+        try:
+            if action == 'BUY':
+                # Pour position longue: SL = max(high signal, high précédent)
+                sl_level = max(high_price, previous_high)
+            elif action == 'SELL':
+                # Pour position courte: SL = min(low signal, low précédent) 
+                sl_level = min(low_price, previous_low)
+            else:
+                print(f"❌ Action invalide pour calcul SL: {action}")
+                return None
+            
+            print(f"💹 SL calculé pour {symbol} {action}: {sl_level:.2f}")
+            return sl_level
+            
+        except Exception as e:
+            print(f"❌ Erreur calcul SL {symbol}: {e}")
+            return None
+    
+    def handle_new_signal(self, symbol, action, high_price, low_price, previous_high, previous_low, entry_date):
+        """
+        Gère un nouveau signal: sauvegarde nouvelle position OU met à jour SL existant
+        
+        Args:
+            symbol: Symbole de l'action
+            action: 'BUY' ou 'SELL' 
+            high_price: High de la bougie du signal
+            low_price: Low de la bougie du signal
+            previous_high: High de la bougie précédente
+            previous_low: Low de la bougie précédente
+            entry_date: Date du signal
+        """
+        try:
+            # Calculer le nouveau niveau de SL
+            new_sl_level = self.calculate_sl_level(symbol, action, high_price, low_price, previous_high, previous_low)
+            if new_sl_level is None:
+                return
+                
+            # Vérifier si position déjà trackée
+            if os.path.exists(self.positions_tracking_file):
+                with open(self.positions_tracking_file, 'r') as f:
+                    positions = json.load(f)
+                    
+                if symbol in positions and positions[symbol]['action'] == action:
+                    # Signal dans le même sens: mettre à jour SL
+                    old_sl = positions[symbol]['sl_level']
+                    
+                    # Mettre à jour seulement si nouveau SL est plus favorable
+                    should_update = False
+                    if action == 'BUY' and new_sl_level > old_sl:
+                        should_update = True  # SL plus haut pour position longue
+                    elif action == 'SELL' and new_sl_level < old_sl:
+                        should_update = True  # SL plus bas pour position courte
+                    
+                    if should_update:
+                        self.update_sl_tracking(symbol, new_sl_level)
+                        print(f"🔄 SL mis à jour: {symbol} {old_sl:.2f} → {new_sl_level:.2f}")
+                    else:
+                        print(f"↔️ SL inchangé: {symbol} nouveau={new_sl_level:.2f} vs ancien={old_sl:.2f}")
+                    return
+            
+            # Nouvelle position: sauvegarder
+            self.save_position_tracking(symbol, action, new_sl_level, entry_date)
+            
+        except Exception as e:
+            print(f"❌ Erreur gestion nouveau signal {symbol}: {e}")
+    
+    def remove_position_tracking(self, symbol):
+        """
+        Supprime une position du tracking (quand fermée)
+        
+        Args:
+            symbol: Symbole à supprimer
+        """
+        try:
+            if not os.path.exists(self.positions_tracking_file):
+                return False
+            
+            with open(self.positions_tracking_file, 'r') as f:
+                positions = json.load(f)
+            
+            if symbol in positions:
+                del positions[symbol]
+                
+                with open(self.positions_tracking_file, 'w') as f:
+                    json.dump(positions, f, indent=2)
+                
+                print(f"🗑️ Position supprimée du tracking: {symbol}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ Erreur suppression tracking {symbol}: {e}")
+            return False
 
 
 # Test du module

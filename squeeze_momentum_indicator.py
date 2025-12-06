@@ -165,25 +165,29 @@ class SqueezeMomentumIndicator:
         }
 
     def _detect_signals(self, momentum: np.array) -> List[Dict]:
-        """Detect momentum zero crossings"""
+        """Detect momentum color change signals"""
         signals = []
-        for i in range(1, len(momentum)):
-            if np.isnan(momentum[i-1]) or np.isnan(momentum[i]):
-                continue
+        colors = self.get_momentum_color(momentum)
+        
+        for i in range(1, len(colors)):
+            prev_color = colors[i-1]
+            curr_color = colors[i]
                 
-            # Bullish: momentum crosses from negative to positive
-            if momentum[i-1] <= 0 and momentum[i] > 0:
+            # BUY signal: momentum becomes maroon (increasing negative)
+            if curr_color == 'maroon' and prev_color != 'maroon':
                 signals.append({
                     'index': i,
                     'type': 'bullish',
-                    'momentum': momentum[i]
+                    'momentum': momentum[i],
+                    'color': curr_color
                 })
-            # Bearish: momentum crosses from positive to negative  
-            elif momentum[i-1] >= 0 and momentum[i] < 0:
+            # SELL signal: momentum becomes green (decreasing positive)
+            elif curr_color == 'green' and prev_color != 'green':
                 signals.append({
                     'index': i,
                     'type': 'bearish', 
-                    'momentum': momentum[i]
+                    'momentum': momentum[i],
+                    'color': curr_color
                 })
                 
         return signals
