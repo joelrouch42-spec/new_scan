@@ -155,22 +155,86 @@ class TradingManager:
         positions = self.get_current_positions()
         return symbol in positions
     
+    def get_pending_orders(self, symbol=None):
+        """Récupère les ordres en attente chez IBKR"""
+        if not self.connected:
+            return []
+        
+        try:
+            trades = self.ib.trades()
+            pending_orders = []
+            
+            for trade in trades:
+                # Ordres actifs: en attente, soumis ou exécutés
+                if trade.orderStatus.status in ['PendingSubmit', 'PreSubmitted', 'Submitted', 'Filled', 'PartiallyFilled']:
+                    order_symbol = trade.contract.symbol
+                    if symbol is None or order_symbol == symbol:
+                        pending_orders.append({
+                            'symbol': order_symbol,
+                            'action': trade.order.action,
+                            'quantity': trade.order.totalQuantity,
+                            'status': trade.orderStatus.status,
+                            'orderId': trade.order.orderId
+                        })
+            
+            return pending_orders
+            
+        except Exception as e:
+            print(f"❌ Error getting pending orders: {e}")
+            return []
+    
     def get_position_size(self, symbol):
         """Retourne le nombre d'actions détenues pour un symbole"""
         positions = self.get_current_positions()
         return positions.get(symbol, {}).get('shares', 0)
     
+    def display_positions_summary(self):
+        """Affiche un résumé concis des positions ouvertes avec P&L"""
+        if not self.connected:
+            return
+        
+        try:
+            positions = self.ib.positions()
+            active_positions = [p for p in positions if p.position != 0]
+            
+            if not active_positions:
+                return
+            
+            print("📊 Positions ouvertes:")
+            for position in active_positions:
+                symbol = position.contract.symbol
+                shares = int(position.position)
+                avg_cost = float(position.avgCost) if position.avgCost else 0
+                unrealized_pnl = float(position.unrealizedPNL) if position.unrealizedPNL else 0
+                market_value = float(position.marketValue) if position.marketValue else 0
+                
+                pnl_color = "🟢" if unrealized_pnl >= 0 else "🔴"
+                direction = "LONG" if shares > 0 else "SHORT"
+                
+                print(f"   {symbol}: {direction} {abs(shares)} @ ${avg_cost:.2f} = ${market_value:,.0f} {pnl_color}${unrealized_pnl:+,.0f}")
+                
+        except Exception as e:
+            print(f"❌ Error displaying positions: {e}")
+    
     def can_trade(self, symbol, action):
         """
-        Vérifie dynamiquement si on peut trader (basé sur positions IBKR réelles)
+        Vérifie dynamiquement si on peut trader (basé sur positions et ordres en attente IBKR)
         """
         current_shares = self.get_position_size(symbol)
+        pending_orders = self.get_pending_orders(symbol)
         
+        
+        # Vérifier les positions existantes
         if action == 'BUY' and current_shares > 0:
             print(f"⚠️ Position longue existante {symbol}: {current_shares} actions")
             return False
         elif action == 'SELL' and current_shares < 0:
             print(f"⚠️ Position courte existante {symbol}: {current_shares} actions")
+            return False
+        
+        # Vérifier s'il y a des ordres en attente (n'importe quel type)
+        if pending_orders:
+            print(f"⚠️ Ordres en attente pour {symbol}: {len(pending_orders)} ordres actifs")
             return False
         
         return True
@@ -479,7 +543,7 @@ class TradingManager:
                 # Pour position longue: SL = min(low signal, low précédent) - PROTECTION CONTRE BAISSE
                 sl_level = min(low_price, previous_low)
             elif action == 'SELL':
-                # Pour position courte: SL = max(high signal, high précédent) - PROTECTION CONTRE HAUSSE
+                # Pour position courte: SL = max(high précédent, high pré-précédent) - PROTECTION CONTRE HAUSSE
                 sl_level = max(high_price, previous_high)
             else:
                 print(f"❌ Action invalide pour calcul SL: {action}")
@@ -668,7 +732,7 @@ class TradingManager:
             if not self.trading_settings['trading']['enabled']:
                 print("❌ Trading désactivé - bracket order simulé")
                 print(f"📝 Simulation: {action} {shares} {symbol} avec SL @ {sl_level:.2f}")
-                return True
+                return "simulated"
             
             # DEBUG: Afficher exactement ce qui est envoyé
             print(f"🔧 DEBUG - Parent: {parent_order.action} {shares} {symbol}")

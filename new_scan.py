@@ -167,10 +167,13 @@ class StockScanner:
         
         # Détection de l'ouverture du marché
         if is_open and self.market_was_closed:
-            print("🔔 Marché vient de s'ouvrir - Nettoyage complet du cache!")
-            self.cleanup_data()
-            os.makedirs(self.data_folder, exist_ok=True)
-            self.cache_refreshed_today = True
+            if not fake_market:
+                print("🔔 Marché vient de s'ouvrir - Nettoyage complet du cache!")
+                self.cleanup_data()
+                os.makedirs(self.data_folder, exist_ok=True)
+                self.cache_refreshed_today = True
+            else:
+                print("🔔 Fake market mode - Pas de cleanup à l'ouverture")
             self.market_was_closed = False
             
         elif not is_open:
@@ -197,6 +200,18 @@ class StockScanner:
                 status = "🔴 IBGateway: NOT RUNNING"
             
             print(f"{status}")
+            
+            # Afficher les positions si trading activé et IBGateway actif
+            if 'ibgateway' in result.stdout.lower() and self.trading_settings.get('trading', {}).get('enabled', False):
+                try:
+                    from trading_manager import TradingManager
+                    trader = TradingManager('settings.json')
+                    if trader.connect():
+                        trader.display_positions_summary()
+                        trader.disconnect()
+                except Exception as e:
+                    pass  # Silencieux si erreur
+            
             return 'ibgateway' in result.stdout.lower()
         except Exception as e:
             print(f"❌ Error checking IBGateway status: {e}")
@@ -468,24 +483,40 @@ class StockScanner:
                     if signal['type'] == 'bullish': 
                         if i > 0:
                             sl_level = min(df.iloc[i]['Low'], df.iloc[i-1]['Low'])
-                            sl_tolerance = 1 
+                            sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0) 
                             sl_with_tolerance = sl_level * (1 - sl_tolerance / 100)
                             
                             fig.add_shape(type="line", x0=x_axis[max(i-2, 0)], x1=x_axis[i], y0=sl_level, y1=sl_level,
                                 line=dict(color="green", width=4, dash="solid"), row=1, col=1)
                             fig.add_shape(type="line", x0=x_axis[max(i-2, 0)], x1=x_axis[i], y0=sl_with_tolerance, y1=sl_with_tolerance,
                                 line=dict(color="green", width=2, dash="dash"), row=1, col=1)
+                            
+                            # Annotations avec valeurs à droite
+                            fig.add_annotation(x=x_axis[i], y=sl_level, text=f"SL: ${sl_level:.2f}", 
+                                             showarrow=False, xanchor="left", font=dict(color="green", size=10))
+                            fig.add_annotation(x=x_axis[i], y=sl_with_tolerance, text=f"SL+Tol: ${sl_with_tolerance:.2f}",
+                                             showarrow=False, xanchor="left", font=dict(color="darkgreen", size=10))
                     
                     elif signal['type'] == 'bearish':
                         if i > 0:
-                            sl_level = max(df.iloc[i]['High'], df.iloc[i-1]['High'])
-                            sl_tolerance = 1
+                            current_high = df.iloc[i]['High']
+                            previous_high = df.iloc[i-1]['High']
+                            pre_previous_high = df.iloc[i-2]['High'] if i >= 2 else previous_high
+                            sl_level = max(pre_previous_high, previous_high)
+                            sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0)
                             sl_with_tolerance = sl_level * (1 + sl_tolerance / 100)
+                            
                             
                             fig.add_shape(type="line", x0=x_axis[max(i-2, 0)], x1=x_axis[i], y0=sl_level, y1=sl_level,
                                 line=dict(color="red", width=4, dash="solid"), row=1, col=1)
                             fig.add_shape(type="line", x0=x_axis[max(i-2, 0)], x1=x_axis[i], y0=sl_with_tolerance, y1=sl_with_tolerance,
                                 line=dict(color="red", width=2, dash="dash"), row=1, col=1)
+                            
+                            # Annotations avec valeurs à droite
+                            fig.add_annotation(x=x_axis[i], y=sl_level, text=f"SL: ${sl_level:.2f}", 
+                                             showarrow=False, xanchor="left", font=dict(color="red", size=10))
+                            fig.add_annotation(x=x_axis[i], y=sl_with_tolerance, text=f"SL+Tol: ${sl_with_tolerance:.2f}",
+                                             showarrow=False, xanchor="left", font=dict(color="darkred", size=10))
             
             title_parts.append('SqzMom')
 
@@ -782,7 +813,7 @@ class StockScanner:
                                 # Get SL level (same logic as chart)
                                 i = signal['index']
                                 sl_level = min(df.iloc[i]['Low'], df.iloc[i-1]['Low']) if i > 0 else df.iloc[i]['Low']
-                                sl_tolerance = 1 
+                                sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0) 
                                 sl_with_tolerance = sl_level * (1 - sl_tolerance / 100)
                                 
                                 print(f"🟢 BUY {symbol} @ ${current_price:.2f} - {signal_date} - SL: ${sl_with_tolerance:.2f}")
@@ -817,7 +848,7 @@ class StockScanner:
                                 # Get SL level (same logic as chart)
                                 i = signal['index']
                                 sl_level = max(df.iloc[i]['High'], df.iloc[i-1]['High']) if i > 0 else df.iloc[i]['High']
-                                sl_tolerance = 1
+                                sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0)
                                 sl_with_tolerance = sl_level * (1 + sl_tolerance / 100)
                                 
                                 print(f"🔴 SELL {symbol} @ ${current_price:.2f} - {signal_date} - SL: ${sl_with_tolerance:.2f}")
@@ -830,9 +861,9 @@ class StockScanner:
                                         if trader.connect():
                                             result = trader.smart_trade_with_bracket(
                                                 symbol, 'SELL',
-                                                df.iloc[i]['High'], df.iloc[i]['Low'],
-                                                df.iloc[i-1]['High'] if i > 0 else df.iloc[i]['High'], 
-                                                df.iloc[i-1]['Low'] if i > 0 else df.iloc[i]['Low'],
+                                                df.iloc[i-1]['High'] if i > 0 else df.iloc[i]['High'], df.iloc[i-1]['Low'] if i > 0 else df.iloc[i]['Low'],
+                                                df.iloc[i-2]['High'] if i > 1 else df.iloc[i-1]['High'] if i > 0 else df.iloc[i]['High'], 
+                                                df.iloc[i-2]['Low'] if i > 1 else df.iloc[i-1]['Low'] if i > 0 else df.iloc[i]['Low'],
                                                 current_price_hint=current_price
                                             )
                                             trader.disconnect()
@@ -846,8 +877,9 @@ class StockScanner:
                                 break
     
                         if alert_triggered:
-                            # Show only last 50 candles for realtime charts
-                            df_chart = df.tail(50).copy().reset_index(drop=True)
+                            # Show configurable number of candles for realtime charts
+                            chart_candles = self.settings.get('realtime', {}).get('chart_candles', 100)
+                            df_chart = df.tail(chart_candles).copy().reset_index(drop=True)
                             self.generate_chart(symbol, df_chart)
     
                     print(f"Next scan in {update_interval}s...\n")
@@ -894,8 +926,14 @@ class StockScanner:
             
             if scan_status.get('date') is None or scan_status.get('date') < today:
                 print(f"🗓️ New day detected: {today}")
-                self.cleanup_data()
-                os.makedirs(self.data_folder, exist_ok=True)
+                
+                # Only cleanup if not in fake market mode
+                fake_market = self.trading_settings.get('trading', {}).get('fake_market', False)
+                if not fake_market:
+                    self.cleanup_data()
+                    os.makedirs(self.data_folder, exist_ok=True)
+                else:
+                    print("🎭 Fake market mode - Skipping cache cleanup")
                 
                 scan_status = {'date': today, 'opening_scan_done': True}
                 with open(scan_status_file, 'w') as f:
