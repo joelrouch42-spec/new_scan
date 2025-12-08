@@ -4,240 +4,219 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a **C-based trading system** that analyzes NASDAQ 100 stocks using IBKR API integration. The system was ported from Python to C for performance and includes comprehensive data caching, market hours validation, and signal processing capabilities.
+This is a Python-based stock scanning and technical analysis system that analyzes NASDAQ 100 stocks using multiple indicators:
+- **Squeeze Momentum** (LazyBear's SQZMOM_LB indicator port)
+- **MACD** (Moving Average Convergence Divergence)
+- **SMC** (Smart Money Concepts - Order Blocks)
+- **Support/Resistance Levels**
+- **ADX** (Average Directional Index for trend filtering)
 
-The core functionality includes:
-- **Real-time NASDAQ 100 scanning** (99 symbols)
-- **IBKR Gateway integration** for market data and trading
-- **EST timezone-aware operations** for US market hours
-- **Smart caching system** with opening/continuous scan logic
-- **Memory-safe implementation** with proper signal handling
+The system generates combined trading signals when multiple indicators align and can operate in both backtest and real-time modes with intelligent market hours detection and automatic cache management.
 
 ## Core Architecture
 
-### Main Components
-- **trading_system.c**: Main trading loop and orchestration with global memory management
-- **data_manager.c**: Market data caching and EST timezone management  
-- **ibkr_connector.c**: Interactive Brokers API interface (stub implementation)
-- **nasdaq_symbols.c**: Hardcoded NASDAQ 100 symbol list
-- **settings_parser.c**: JSON configuration file parser
+- **new_scan.py**: Main orchestrator & scanner with market hours intelligence
+- **trading_manager.py**: IBKR integration & order management
+- **squeeze_momentum_analyzer.py**: LazyBear SQZMOM_LB indicator
+- **macd_analyzer.py**: MACD calculations & signals
+- **smc_analyzer.py**: Smart Money Concepts (Order Blocks)
+- **sr_levels_analyzer.py**: Support/Resistance detection
+- **adx_analyzer.py**: ADX trend strength filtering
+- **settings.json**: System configuration
+- **trading_settings.json**: Trading parameters
+- **config.txt**: Symbol watchlists
 
 ### Key Modules
-```c
-// Main trading system
-./trading_system              // Main executable
-
-// Core modules
-trading_system.h/c            // Main trading loop and signal handlers
-data_manager.h/c              // Data caching with EST timezone support
-ibkr_connector.h/c            // IBKR API interface (currently stubs)
-nasdaq_symbols.h/c            // NASDAQ 100 symbol management
-settings_parser.h/c           // JSON settings configuration parser
+```
+new_scan/
+├── new_scan.py              # Main orchestrator & scanner
+├── trading_manager.py       # IBKR integration & order management
+├── squeeze_momentum_analyzer.py  # LazyBear SQZMOM_LB indicator
+├── macd_analyzer.py         # MACD calculations & signals
+├── smc_analyzer.py          # Smart Money Concepts (Order Blocks)
+├── sr_levels_analyzer.py   # Support/Resistance detection
+├── adx_analyzer.py          # ADX trend strength filtering
+├── settings.json           # System configuration
+├── trading_settings.json   # Trading parameters
+└── config.txt              # Symbol watchlists
 ```
 
 ## Running the System
 
-### Build and Run
+### Development/Testing Commands
 ```bash
-# Build the system
-make
+# Run backtest mode (uses Yahoo Finance data)
+python3 new_scan.py --backtest
 
-# Run trading system
-./trading_system
+# Generate chart for specific symbol
+python3 new_scan.py --chart AAPL
 
-# Kill with Ctrl+C (proper memory cleanup via signal handler)
+# Run real-time scanning (requires IBKR connection)
+python3 new_scan.py
+
+# Clean cached data
+python3 new_scan.py --cleanup
 ```
 
-### Build System
-- **Makefile**: Comprehensive build system with debug support
-- **Dependencies**: Standard C libraries, no external dependencies required
-- **Debug mode**: Extensive logging for development and troubleshooting
+### Dependencies
+Install requirements:
+```bash
+pip install -r requirements.txt
+```
 
-## Opening vs Continuous Scan Logic
+### Market Hours Intelligence
+The system automatically detects NYSE market hours and adjusts behavior:
+- **Market Open (9:30-16:00 EST)**: 60-second scan intervals
+- **Pre-market/After-hours**: 5-minute intervals to conserve resources  
+- **Weekend**: 30-minute intervals with minimal activity
+- **Market Opening**: Automatic cache cleanup and fresh data download
 
-The system implements two scan modes:
+## Signal Logic
 
-### Opening Scan
-Triggered when:
-- No `data/` folder exists
-- No `.scan` file exists  
-- Date in `.scan` differs from today (EST)
-- `scanned=0` flag in `.scan` file
+The system implements exact Pine Script logic for combined signals:
+- **Buy Signal**: Squeeze Momentum turns LIME AND MACD turns GREEN (transition required)
+- **Sell Signal**: Squeeze Momentum turns RED AND MACD turns RED (transition required)
+- **ADX Filter**: Optional trend strength filtering (when enabled)
+- **Alternating Signals**: System enforces buy→sell→buy pattern to avoid duplicate signals
 
-**Actions:**
-- Cleans old cache files (7+ days)
-- Downloads/caches all 99 NASDAQ symbols via `prepare_cache()`
-- Updates `.scan` file with current date and `scanned=1`
-- Ignores market hours for testing purposes
-
-### Continuous Scan  
-Triggered when:
-- `.scan` file exists with today's date (EST)
-- `scanned=1` flag is set
-
-**Actions:**
-- Respects market hours (9:30-16:00 EST, Mon-Fri)
-- Uses existing cached data
-- Performs analysis on cached data without re-downloading
+### Market Hours Detection
+```python
+def is_market_open():
+    """Detect NYSE market hours and return status"""
+    now = datetime.now(EST)
+    weekday = now.weekday()  # 0=Monday, 6=Sunday
+    current_time = now.time()
+    
+    # Weekend check
+    if weekday >= 5:  # Saturday=5, Sunday=6
+        days_until_monday = (7 - weekday) % 7
+        if days_until_monday == 0:  # Si c'est dimanche
+            days_until_monday = 1
+        next_open = now.replace(hour=9, minute=30, second=0, microsecond=0) + timedelta(days=days_until_monday)
+        return False, "Weekend", next_open
+    
+    # Trading hours (9:30-16:00 EST)
+    market_open = time(9, 30)
+    market_close = time(16, 0)
+    
+    if current_time < market_open:
+        # Pre-market
+        next_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        return False, "Pre-market", next_open
+    elif current_time > market_close:
+        # After-hours
+        next_open = now.replace(hour=9, minute=30, second=0, microsecond=0) + timedelta(days=1)
+        return False, "After-hours", next_open
+    else:
+        # Market open
+        next_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        return True, "Open", next_close
+```
 
 ## Configuration
 
 The system is configured via `settings.json`:
-- **realtime.ibkr_host**: IBKR Gateway host (default: 127.0.0.1)
-- **realtime.ibkr_port**: IBKR Gateway port (default: 4002)  
-- **realtime.ibkr_client_id**: Client ID for IBKR connection
-- **realtime.candle_nb**: Number of candles to download (default: 200)
-- **indicators**: Configuration for future indicator implementations
+- **data_folder**: Where historical data is cached
+- **backtest**: Parameters for backtesting mode (candle count, interval)
+- **realtime**: IBKR connection settings and real-time parameters
+- **indicators**: Enable/disable and configure each indicator
 
-## Data Management
+Individual stock watchlist is defined in `config.txt` (symbol + provider format).
+
+## Data Sources
+
+- **Backtest Mode**: Yahoo Finance (`yfinance`)
+- **Real-time Mode**: Interactive Brokers (`ib_insync`)
+
+Data is cached in the `data/` folder with filename format: `{date}_{symbol}_{candle_count}_{interval}.csv`
 
 ### Caching System
 - **Location**: `data/` folder
 - **Format**: `{date}_{symbol}_{candle_count}_{interval}.csv`
 - **Example**: `data/2025-12-05_AAPL_200_1d.csv`
-- **Cleanup**: Automatic removal of files older than 7 days
+- **Automatic Cleanup**: Cache refresh on market opening using existing `cleanup_data()` method
 
 ### EST Timezone Handling
-```c
-// Proper EST time calculation (UTC-5)
-int data_manager_get_est_time(struct tm* tm_est) {
-    time_t now = time(NULL);
-    time_t est_timestamp = now - (5 * 60 * 60); // UTC-5
-    struct tm* est_time = gmtime(&est_timestamp);
-    *tm_est = *est_time;
-    return 1;
-}
+```python
+from zoneinfo import ZoneInfo
+
+EST = ZoneInfo('America/New_York')
+now = datetime.now(EST)
 ```
 
-### Market Hours Validation
-- **Trading Hours**: 9:30-16:00 EST, Monday-Friday
-- **Outside Hours**: System sleeps 5 minutes between checks
-- **Test Mode**: Opening scan ignores market hours for development
+### Automatic Cache Management
+- **Market Opening**: System automatically calls `cleanup_data()` when market opens
+- **Resource Optimization**: Intelligent scan intervals based on market status
+- **Fresh Data**: Ensures clean cache for accurate trading decisions
 
-## Memory Management
+## Output
 
-### Global Buffer System
-The system now uses a **global buffer allocation strategy** to eliminate repeated malloc/free operations:
+- **Console**: Real-time alerts with emoji indicators (🟢 for buy, 🔴 for sell)
+- **Charts**: HTML charts generated in `chart/` folder using Plotly when signals trigger
+- **Charts include**: Candlesticks, Order Blocks, Support/Resistance levels, and signal markers
 
-```c
-// Global reusable buffer
-static IBKRMarketData* g_market_data = NULL;
+## Calibration Files
 
-// Allocate once at startup
-int init_global_market_data_buffer() {
-    g_market_data = malloc(sizeof(IBKRMarketData));
-    g_market_data->candles = malloc(sizeof(IBKRCandle) * g_settings.realtime.candle_nb);
-    return 1;
-}
+The `squeeze_momentum_analyzer.py` includes calibration factors optimized to match TradingView's exact values:
+- Multiple analysis and optimization scripts in repo (`analyze_*.py`, `optimize_*.py`, `verify_*.py`)
+- Calibration ensures momentum calculations match TradingView reference implementation
 
-// Reuse buffer for all symbols
-int data_manager_load_into_buffer(IBKRConnection* conn, const char* symbol, 
-                                  int candle_count, const char* interval,
-                                  int force_refresh, IBKRMarketData* buffer);
+## Trading Integration
+
+### TradingManager Features
+- **Bracket Orders**: Parent market order with child stop-loss order
+- **Risk Management**: Automatic stop-loss calculation based on price action
+- **Paper Trading**: Safe testing environment before live trading
+- **Exchange-Managed Stops**: 24/7 protection without script dependency
+
+### Stop-Loss Logic
+- **BUY positions**: SL = min(signal_low, previous_low)
+- **SELL positions**: SL = max(signal_high, previous_high)
+
+### Key Trading Functions
+- `smart_trade_with_bracket()`: Execute bracket order with automatic stop-loss
+- `calculate_sl_level()`: Calculate stop-loss based on price action
+- `get_account_equity()`: Monitor account balance and position sizing
+
+## Testing Framework
+
+### Available Tests
+- `test_market_hours.py`: Validate market hours detection logic
+- `test_bracket_order.py`: Test bracket order functionality with IBKR
+- Various analyzer test files for indicator validation
+
+### Running Tests
+```bash
+# Test market hours detection
+python3 test_market_hours.py
+
+# Test bracket order functionality  
+python3 test_bracket_order.py
+
+# Test specific indicators
+python3 test_*.py
 ```
-
-### Signal Handling
-```c
-void signal_handler(int sig) {
-    // Clean up global variables
-    if(g_symbols) {
-        free(g_symbols);
-        g_symbols = NULL;
-    }
-    if(g_conn) {
-        ibkr_free_connection(g_conn);
-        g_conn = NULL;
-    }
-    if(g_market_data) {
-        if(g_market_data->candles) {
-            free(g_market_data->candles);
-        }
-        free(g_market_data);
-        g_market_data = NULL;
-    }
-    exit(0);
-}
-```
-
-### Memory Efficiency
-- **Single Allocation**: One global buffer allocated at startup (no malloc/free in scan loops)
-- **Buffer Reuse**: Same buffer used for all 99 symbols during scanning
-- **Proper Cleanup**: Memory freed only under Ctrl+C signal handling
-
-## IBKR Integration
-
-### Current Status
-- **Stub Implementation**: All IBKR functions are currently stubs for development
-- **Connection**: Simulated connection to 127.0.0.1:4002
-- **Data Generation**: Fake market data for testing
-
-### Future Implementation
-- Replace stubs with actual IBKR API calls
-- Implement real market data downloads
-- Add order placement and position management
-
-## Status Tracking
-
-### .scan File Format
-```
-date=2025-12-05
-scanned=1
-```
-
-### Debug Output
-Extensive logging with debug modes:
-- `data_manager_set_debug_mode(1)`: Data operations logging
-- `ibkr_set_debug_mode(1)`: IBKR operations logging  
-- `main_set_debug_mode(0)`: Main system logging (currently disabled)
-
-## Key Functions
-
-### Core System Functions
-- `main_trading_loop()`: Main system loop with market hours and scan logic
-- `prepare_cache()`: Downloads and caches market data for all symbols (opening scan only)
-- `is_opening_scan()`: Determines scan type based on .scan file and current date
-- `signal_handler()`: Proper cleanup on Ctrl+C with memory deallocation
-- `init_global_market_data_buffer()`: Initialize global buffer once at startup
-
-### Data Management Functions  
-- `data_manager_get_market_data()`: Primary interface for market data (cache-first)
-- `data_manager_load_into_buffer()`: Load data into existing buffer (no malloc/free)
-- `data_manager_get_est_time()`: EST timezone conversion from UTC
-- `data_manager_is_market_hours()`: Market hours validation (9:30-16:00 EST)
-- `data_manager_cleanup_old_cache()`: Automatic cleanup of old cache files
-
-### Settings Management Functions
-- `settings_load()`: Load configuration from settings.json
-- `settings_init_defaults()`: Initialize with default values
-- `settings_parse_json_line()`: Parse simple JSON key-value pairs
-- `settings_parse_int/double/bool()`: Type-safe parsing with validation
-
-### NASDAQ Symbol Management
-- `get_nasdaq100_symbols()`: Load all 99 NASDAQ symbols into dynamic array
-- `get_nasdaq100_count()`: Get symbol count for dynamic allocation
-- `is_nasdaq100_symbol()`: Validate symbol membership
 
 ## Current Implementation Status
 
 ✅ **Complete:**
-- EST timezone handling and market hours validation
-- Global buffer memory management (eliminates malloc/free in loops)
-- JSON settings parser with type-safe validation
-- Opening/continuous scan logic with .scan file tracking
-- Comprehensive data caching system
-- NASDAQ 100 symbol management
-- IBKR connection framework (stubs)
-- Signal handling with proper memory cleanup
+- Market hours intelligence with automatic cache management
+- Multiple technical indicator implementations (Squeeze Momentum, MACD, SMC, S/R, ADX)
+- Combined signal logic with strict alternation
+- IBKR integration with bracket order support
+- Interactive chart generation with signal markers
+- Comprehensive configuration system
+- Automatic cache cleanup on market opening
 
-🚧 **In Development:**
-- Actual IBKR API integration
-- Signal analysis algorithms (TODO sections in main loop)
-- Order placement and position management
-- Stop-loss calculation and tracking
+🚧 **Active Features:**
+- Real-time scanning with intelligent intervals based on market hours
+- Paper trading integration for safe testing
+- Cache optimization and resource management
+- EST timezone handling with ZoneInfo
 
-📋 **Planned:**
-- Real-time signal detection
-- Chart generation and visualization
-- Performance optimization and testing
-- Comprehensive error handling
-- Unit testing framework
+📋 **Recent Improvements:**
+- Added `is_market_open()` function for market status detection
+- Implemented `check_market_and_refresh_cache()` for automatic cache management
+- Enhanced resource optimization with variable scan intervals
+- Fixed NaN price handling for market closed scenarios
+- Integrated existing `cleanup_data()` method for cache refresh

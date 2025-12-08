@@ -39,7 +39,10 @@ class SqueezeAnalyzer:
         result = {
             'zero_cross_positive': [],  # Momentum crosses from negative to positive
             'zero_cross_negative': [],  # Momentum crosses from positive to negative
-            'values': []                # All momentum values with their colors
+            'values': [],               # All momentum values with their colors
+            'momentum': [],             # Momentum values array (for compatibility)
+            'momentum_colors': [],      # Momentum colors array (for compatibility) 
+            'signals': []               # Combined signals (for compatibility)
         }
 
         min_length = max(self.bb_length, self.kc_length)
@@ -74,7 +77,7 @@ class SqueezeAnalyzer:
         momentum = self._calculate_momentum(df, self.kc_length)
 
         # Analyze momentum values
-        start_idx = min_length
+        start_idx = max(self.bb_length, self.kc_length) * 2 - 2  # Match original behavior
 
         for i in range(start_idx, len(df)):
             # Determine bar color based on Pine Script logic:
@@ -100,16 +103,13 @@ class SqueezeAnalyzer:
                     else:
                         color = 'maroon'  # Pine 'maroon' - becoming less negative (shorter bars)
 
-                # Detect zero crossings
-                # Cross from negative to positive (0 à +)
+                # Zero crossings kept for backward compatibility but not used for signals
                 if val_prev <= 0 and val > 0:
                     result['zero_cross_positive'].append({
                         'index': i,
                         'price': df.iloc[i]['Close'],
                         'momentum': val
                     })
-
-                # Cross from positive to negative (0 à -)
                 elif val_prev >= 0 and val < 0:
                     result['zero_cross_negative'].append({
                         'index': i,
@@ -138,6 +138,41 @@ class SqueezeAnalyzer:
                 'sqz_off': sqz_off[i],
                 'no_sqz': no_sqz[i]
             })
+
+        # Populate compatibility arrays for SqueezeMomentumIndicator interface  
+        # Create full-length arrays with NaN/gray for early values
+        result['momentum'] = [np.nan] * len(df)
+        result['momentum_colors'] = ['gray'] * len(df)
+        
+        # Fill in the calculated values
+        for val in result['values']:
+            idx = val['index']
+            result['momentum'][idx] = val['momentum']
+            result['momentum_colors'][idx] = val['color']
+        
+        # Detect momentum color change signals (correct LazyBear logic)
+        colors = [val['color'] for val in result['values']]
+        
+        for i in range(1, len(colors)):
+            prev_color = colors[i-1]
+            curr_color = colors[i]
+            
+            # BUY signal: momentum becomes maroon (increasing negative)
+            if curr_color == 'maroon' and prev_color != 'maroon':
+                result['signals'].append({
+                    'index': result['values'][i]['index'],
+                    'type': 'bullish',
+                    'momentum': result['values'][i]['momentum'],
+                    'color': curr_color
+                })
+            # SELL signal: momentum becomes green (decreasing positive)  
+            elif curr_color == 'green' and prev_color != 'green':
+                result['signals'].append({
+                    'index': result['values'][i]['index'],
+                    'type': 'bearish',
+                    'momentum': result['values'][i]['momentum'],
+                    'color': curr_color
+                })
 
         return result
 
@@ -192,42 +227,47 @@ class SqueezeAnalyzer:
 
     def _calculate_momentum(self, df: pd.DataFrame, length: int) -> np.ndarray:
         """
-        Calculate momentum using Pine Script's exact linear regression implementation
-        Pine Script: linreg(source - avg(avg(highest(high, length), lowest(low, length)), sma(close, length)), length, 0)
+        Calculate momentum using EXACT original SqueezeMomentumIndicator logic
         """
-        closes = df['Close'].values
         highs = df['High'].values
-        lows = df['Low'].values
+        lows = df['Low'].values  
+        closes = df['Close'].values
         
-
-        momentum = np.zeros(len(df))
-
-        for i in range(length - 1, len(df)):
-            # Get data window
-            window_highs = highs[i - length + 1:i + 1]
-            window_lows = lows[i - length + 1:i + 1]
-            window_closes = closes[i - length + 1:i + 1]
-
-            # Pine Script calculation exactly:
-            # highest(high, length)
-            highest_high = np.max(window_highs)
-            # lowest(low, length)
-            lowest_low = np.min(window_lows)
-            # avg(highest, lowest)
-            avg_hl = (highest_high + lowest_low) / 2
-            # sma(close, length)
-            sma_close = np.mean(window_closes)
-            # avg(avg_hl, sma_close)
-            avg_val = (avg_hl + sma_close) / 2
-
-            # source - avg_val (this is what we regress on)
-            source_vals = window_closes - avg_val
-
-            # Pine Script ta.linreg() exact implementation
-            # This calculates linear regression and returns the value at offset 0 (current bar)
-            momentum[i] = self._pine_linreg(source_vals, length, 0)
-
+        # Use original's helper functions logic
+        highest_high = self._highest(highs, length)
+        lowest_low = self._lowest(lows, length)
+        sma_close = self._sma(closes, length)
+        
+        avg1 = (highest_high + lowest_low) / 2
+        avg2 = (avg1 + sma_close) / 2
+        
+        source_diff = closes - avg2
+        momentum = self._linreg(source_diff, length)
+        
         return momentum
+    
+    def _highest(self, data: np.array, period: int) -> np.array:
+        """Highest value over period - copied from original"""
+        return pd.Series(data).rolling(window=period, min_periods=period).max().values
+
+    def _lowest(self, data: np.array, period: int) -> np.array:
+        """Lowest value over period - copied from original"""
+        return pd.Series(data).rolling(window=period, min_periods=period).min().values
+    
+    def _linreg(self, data: np.array, period: int) -> np.array:
+        """Linear regression value - copied from original"""
+        result = np.full(len(data), np.nan)
+        
+        for i in range(period - 1, len(data)):
+            y_vals = data[i - period + 1:i + 1]
+            x_vals = np.arange(period)
+            
+            if len(y_vals) == period and not np.any(np.isnan(y_vals)):
+                A = np.vstack([x_vals, np.ones(len(x_vals))]).T
+                m, b = np.linalg.lstsq(A, y_vals, rcond=None)[0]
+                result[i] = m * (period - 1) + b
+                
+        return result
 
     def _pine_linreg(self, src: np.ndarray, length: int, offset: int) -> float:
         """
@@ -240,24 +280,16 @@ class SqueezeAnalyzer:
         if length <= 1:
             return 0.0
             
-        # Pine Script ta.linreg() exact implementation
+        # Pine Script ta.linreg() exact implementation using np.linalg.lstsq
         x = np.arange(length, dtype=float)  # 0, 1, 2, ..., length-1
         y = np.array(src, dtype=float)
         
-        # Standard linear regression calculation
-        n = float(length)
-        sum_x = np.sum(x)
-        sum_y = np.sum(y) 
-        sum_xx = np.sum(x * x)
-        sum_xy = np.sum(x * y)
-        
-        # Calculate slope and intercept
-        denominator = n * sum_xx - sum_x * sum_x
-        if abs(denominator) < 1e-10:
+        # Use np.linalg.lstsq for better performance and numerical stability
+        try:
+            A = np.vstack([x, np.ones(len(x))]).T
+            slope, intercept = np.linalg.lstsq(A, y, rcond=None)[0]
+        except np.linalg.LinAlgError:
             return 0.0
-            
-        slope = (n * sum_xy - sum_x * sum_y) / denominator
-        intercept = (sum_y - slope * sum_x) / n
         
         # Calculate value at specified offset
         # offset=0 means current bar, which is at x = length-1

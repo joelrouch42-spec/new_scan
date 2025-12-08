@@ -37,7 +37,7 @@ class TradingManager:
                 return False
                 
         except Exception as e:
-            print(f"❌ Erreur connexion IBKR: {e}")
+            print(f"❌ IBKR connection error: {e}")
             return False
     
     def disconnect(self):
@@ -63,10 +63,11 @@ class TradingManager:
                     break
             
             if equity is not None:
-                print(f"💰 Equity: ${equity:,.2f}")
-                
-                # Afficher unrealized/realized PNL
-                self._display_pnl_summary(account_values)
+                verbose = self.trading_settings.get('trading', {}).get('verbose', False)
+                if verbose:
+                    print(f"💰 Equity: ${equity:,.2f}")
+                    # Afficher unrealized/realized PNL
+                    self._display_pnl_summary(account_values)
                 
                 return equity
             else:
@@ -74,7 +75,7 @@ class TradingManager:
                 return None
                 
         except Exception as e:
-            print(f"❌ Erreur lecture equity: {e}")
+            print(f"❌ Equity read error: {e}")
             return None
     
     def get_account_summary(self):
@@ -99,7 +100,7 @@ class TradingManager:
             return summary
             
         except Exception as e:
-            print(f"❌ Erreur lecture compte: {e}")
+            print(f"❌ Account read error: {e}")
             return None
     
     def calculate_position_size(self, equity, symbol_price):
@@ -146,7 +147,7 @@ class TradingManager:
             return current_positions
             
         except Exception as e:
-            print(f"❌ Erreur lecture positions: {e}")
+            print(f"❌ Positions read error: {e}")
             return {}
     
     def has_position(self, symbol):
@@ -174,7 +175,7 @@ class TradingManager:
         
         return True
     
-    def smart_trade(self, symbol, action, price=None):
+    def smart_trade(self, symbol, action, price=None, current_price_hint=None):
         """
         API unique pour acheter/vendre avec vérification automatique des positions
         
@@ -214,11 +215,18 @@ class TradingManager:
                 self.ib.sleep(2)  # Attendre les données
                 current_price = ticker.last if ticker.last else ticker.close
                 
-                if current_price:
-                    shares = self.calculate_position_size(equity, current_price)
-                else:
-                    print(f"❌ Impossible d'obtenir le prix pour {symbol}")
-                    return None
+                # Fallback: utiliser prix du cache ou des données
+                if not current_price or str(current_price) == 'nan':
+                    if current_price_hint:
+                        current_price = current_price_hint
+                        verbose = self.trading_settings.get('trading', {}).get('verbose', False)
+                        if verbose:
+                            print(f"💰 Prix du cache: ${current_price:.2f}")
+                    else:
+                        current_price = 100.0  # Fallback final
+                        print(f"⚠️ Pas de prix disponible, prix par défaut: ${current_price}")
+                
+                shares = self.calculate_position_size(equity, current_price)
                     
             elif action == 'SELL':
                 # Pour SELL: vendre toute la position
@@ -263,7 +271,7 @@ class TradingManager:
             return trade
             
         except Exception as e:
-            print(f"❌ Erreur passage d'ordre {symbol}: {e}")
+            print(f"❌ Order execution error {symbol}: {e}")
             return None
     
     def _display_pnl_summary(self, account_values):
@@ -317,7 +325,7 @@ class TradingManager:
             print(f"📝 Position trackée: {symbol} {action} SL={sl_level:.2f}")
             
         except Exception as e:
-            print(f"❌ Erreur sauvegarde position {symbol}: {e}")
+            print(f"❌ Position save error {symbol}: {e}")
     
     def update_sl_tracking(self, symbol, new_sl_level):
         """Met à jour le SL d'une position existante"""
@@ -340,7 +348,7 @@ class TradingManager:
             return False
             
         except Exception as e:
-            print(f"❌ Erreur mise à jour SL {symbol}: {e}")
+            print(f"❌ SL update error {symbol}: {e}")
             return False
     
     def check_sl_hits_continuous(self, current_prices):
@@ -395,7 +403,7 @@ class TradingManager:
             return sl_hits
             
         except Exception as e:
-            print(f"❌ Erreur scan continu SL: {e}")
+            print(f"❌ Continuous SL scan error: {e}")
             return []
     
     def check_sl_hits_opening(self, current_prices):
@@ -446,7 +454,7 @@ class TradingManager:
             return sl_hits
             
         except Exception as e:
-            print(f"❌ Erreur scan ouverture SL: {e}")
+            print(f"❌ Opening SL scan error: {e}")
             return []
     
     def calculate_sl_level(self, symbol, action, high_price, low_price, previous_high, previous_low):
@@ -468,11 +476,11 @@ class TradingManager:
         """
         try:
             if action == 'BUY':
-                # Pour position longue: SL = max(high signal, high précédent)
-                sl_level = max(high_price, previous_high)
-            elif action == 'SELL':
-                # Pour position courte: SL = min(low signal, low précédent) 
+                # Pour position longue: SL = min(low signal, low précédent) - PROTECTION CONTRE BAISSE
                 sl_level = min(low_price, previous_low)
+            elif action == 'SELL':
+                # Pour position courte: SL = max(high signal, high précédent) - PROTECTION CONTRE HAUSSE
+                sl_level = max(high_price, previous_high)
             else:
                 print(f"❌ Action invalide pour calcul SL: {action}")
                 return None
@@ -481,7 +489,7 @@ class TradingManager:
             return sl_level
             
         except Exception as e:
-            print(f"❌ Erreur calcul SL {symbol}: {e}")
+            print(f"❌ SL calculation error {symbol}: {e}")
             return None
     
     def handle_new_signal(self, symbol, action, high_price, low_price, previous_high, previous_low, entry_date):
@@ -530,7 +538,7 @@ class TradingManager:
             self.save_position_tracking(symbol, action, new_sl_level, entry_date)
             
         except Exception as e:
-            print(f"❌ Erreur gestion nouveau signal {symbol}: {e}")
+            print(f"❌ New signal handling error {symbol}: {e}")
     
     def remove_position_tracking(self, symbol):
         """
@@ -558,8 +566,135 @@ class TradingManager:
             return False
             
         except Exception as e:
-            print(f"❌ Erreur suppression tracking {symbol}: {e}")
+            print(f"❌ Position tracking removal error {symbol}: {e}")
             return False
+
+    def smart_trade_with_bracket(self, symbol, action, high_price, low_price, previous_high, previous_low, price=None, current_price_hint=None):
+        """
+        Trade avec stop-loss géré par la bourse (bracket order)
+        
+        Args:
+            symbol: Symbole de l'action
+            action: 'BUY' ou 'SELL'
+            high_price: High de la bougie du signal
+            low_price: Low de la bougie du signal
+            previous_high: High de la bougie précédente
+            previous_low: Low de la bougie précédente
+            price: Prix limite (si None, ordre market)
+        """
+        if not self.connected:
+            print("❌ Pas connecté à IBKR")
+            return None
+        
+        if not self.can_trade(symbol, action):
+            return None
+        
+        try:
+            # Créer le contrat
+            contract = Stock(symbol, 'SMART', 'USD')
+            qualified = self.ib.qualifyContracts(contract)
+            
+            if not qualified:
+                print(f"❌ Contrat invalide pour {symbol}")
+                return None
+            
+            contract = qualified[0]
+            
+            # Obtenir le prix actuel (nécessaire pour toutes les actions)
+            ticker = self.ib.reqMktData(contract)
+            self.ib.sleep(2)
+            current_price = ticker.last if ticker.last else ticker.close
+            
+            # Fallback: utiliser prix du cache ou des données
+            if not current_price or str(current_price) == 'nan':
+                if current_price_hint:
+                    current_price = current_price_hint
+                    verbose = self.trading_settings.get('trading', {}).get('verbose', False)
+                    if verbose:
+                        print(f"💰 Prix du cache: ${current_price:.2f}")
+                else:
+                    print(f"❌ Impossible d'obtenir le prix pour {symbol}")
+                    return None
+            
+            # Calculer la taille de position
+            if action == 'BUY':
+                equity = self.get_account_equity()
+                if equity is None:
+                    return None
+                
+                shares = self.calculate_position_size(equity, current_price)
+                    
+            elif action == 'SELL':
+                shares = self.get_position_size(symbol)
+                if shares <= 0:
+                    # Pas de position longue, créer une position courte
+                    equity = self.get_account_equity()
+                    shares = self.calculate_position_size(equity, current_price)
+                    verbose = self.trading_settings.get('trading', {}).get('verbose', False)
+                    if verbose:
+                        print(f"📈 Ouverture position SHORT pour {symbol} ({shares} shares)")
+            else:
+                print(f"❌ Action invalide: {action}")
+                return None
+            
+            if shares <= 0:
+                print(f"❌ Taille de position invalide: {shares}")
+                return None
+            
+            # Calculer le niveau de stop-loss
+            sl_level = self.calculate_sl_level(symbol, action, high_price, low_price, previous_high, previous_low)
+            if sl_level is None:
+                print(f"❌ Impossible de calculer le SL pour {symbol}")
+                return None
+            
+            # Créer l'ordre parent
+            order_type = self.trading_settings['trading']['order_settings']['order_type']
+            if order_type == 'MARKET' or price is None:
+                parent_order = MarketOrder(action, shares)
+            else:
+                parent_order = LimitOrder(action, shares, price)
+            
+            parent_order.tif = self.trading_settings['trading']['order_settings']['time_in_force']
+            parent_order.outsideRth = self.trading_settings['trading']['order_settings']['outside_rth']
+            parent_order.transmit = False  # Ne pas transmettre immédiatement
+            
+            # Créer l'ordre stop-loss (ordre enfant)
+            sl_action = 'SELL' if action == 'BUY' else 'BUY'  # Action inverse
+            stop_order = StopOrder(sl_action, shares, sl_level)
+            stop_order.parentId = parent_order.orderId
+            stop_order.transmit = True  # Transmettre le bracket complet
+            
+            # Vérifier si trading activé
+            if not self.trading_settings['trading']['enabled']:
+                print("❌ Trading désactivé - bracket order simulé")
+                print(f"📝 Simulation: {action} {shares} {symbol} avec SL @ {sl_level:.2f}")
+                return True
+            
+            # DEBUG: Afficher exactement ce qui est envoyé
+            print(f"🔧 DEBUG - Parent: {parent_order.action} {shares} {symbol}")
+            print(f"🔧 DEBUG - Stop: {stop_order.action} {shares} {symbol} @ {sl_level}")
+            
+            # Placer les ordres
+            parent_trade = self.ib.placeOrder(contract, parent_order)
+            stop_trade = self.ib.placeOrder(contract, stop_order)
+            
+            verbose = self.trading_settings.get('trading', {}).get('verbose', False)
+            if verbose:
+                print(f"📈 Bracket Order placé:")
+                print(f"   Symbole: {symbol}")
+                print(f"   Action: {action}")
+                print(f"   Quantité: {shares}")
+                print(f"   Stop-Loss: {sl_level:.2f}")
+                print(f"   Parent Order ID: {parent_order.orderId}")
+                print(f"   Stop Order ID: {stop_order.orderId}")
+            else:
+                print(f"💼 {action} {symbol} x{shares} @ ${current_price:.2f} (SL: ${sl_level:.2f})")
+            
+            return {'parent_trade': parent_trade, 'stop_trade': stop_trade}
+            
+        except Exception as e:
+            print(f"❌ Bracket order error {symbol}: {e}")
+            return None
 
 
 # Test du module

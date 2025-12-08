@@ -1,32 +1,4 @@
 {
-  "scan_date": "2025-12-06",
-  "scan_completed": true,
-  "scan_time": "09:30:00",
-  "timezone": "EST",
-  "scan_type": "opening",
-  "symbols_processed": 99,
-  "symbols_failed": 0,
-  "cache_cleanup_performed": true,
-  "market_hours_active": true,
-  "data_source": "ibkr",
-  "cache_location": "data/",
-  "scan_details": {
-    "total_nasdaq_symbols": 99,
-    "successful_downloads": 99,
-    "cache_hits": 99,
-    "cache_misses": 0,
-    "errors": []
-  },
-  "system_info": {
-    "version": "1.0",
-    "implementation": "C",
-    "debug_mode": true,
-    "ibkr_connection": {
-      "host": "127.0.0.1",
-      "port": 4002,
-      "client_id": 1,
-      "connected": true
-    }
-  },
-  "last_updated": "2025-12-06T09:30:00-05:00"
+  "date": "2025-12-07",
+  "opening_scan_done": true
 }

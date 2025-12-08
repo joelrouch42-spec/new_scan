@@ -1,7 +1,9 @@
 {
   "trading": {
     "enabled": true,
-    "trade_percent": 10,
+    "fake_market": true,
+    "verbose": false,
+    "trade_percent": 1,
     "sl_tolerance_percent": 1,
     "order_settings": {
       "order_type": "MARKET",

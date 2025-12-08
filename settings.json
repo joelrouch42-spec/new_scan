@@ -14,7 +14,7 @@
     "test_candle": 0,
     "ibkr_host": "127.0.0.1",
     "ibkr_port": 4002,
-    "ibkr_client_id": 2
+    "ibkr_client_id": 3
   },
   "indicators": {
     "support_resistance": {
