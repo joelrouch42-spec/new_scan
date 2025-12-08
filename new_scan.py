@@ -67,7 +67,7 @@ def is_market_open(fake_market=False):
         return True, "Open", next_close
 
 class StockScanner:
-    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, all_charts=False, nasdaq=False, crypto=False, test_candle_override=None):
+    def __init__(self, settings_file, is_backtest=False, chart_symbol=None, all_charts=False, nasdaq=True, crypto=False, test_candle_override=None):
         with open(settings_file, 'r') as f:
             self.settings = json.load(f)
 
@@ -133,7 +133,7 @@ class StockScanner:
     def get_nasdaq100_symbols(self):
         """Returns NASDAQ 100 symbols"""
         symbols = [
-            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',
             'NFLX', 'AMD', 'PEP', 'ADBE', 'CSCO', 'TMUS', 'CMCSA', 'INTC', 'TXN', 'QCOM',
             'INTU', 'AMGN', 'HON', 'AMAT', 'SBUX', 'ISRG', 'BKNG', 'VRTX', 'GILD', 'ADI',
             'ADP', 'MDLZ', 'REGN', 'PANW', 'LRCX', 'MU', 'PYPL', 'KLAC', 'SNPS', 'CDNS',
@@ -146,14 +146,6 @@ class StockScanner:
         ]
         return [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
 
-    def get_crypto_symbols(self):
-        """Returns Crypto symbols (Ignored based on user request but kept for code stability)"""
-        symbols = [
-            'BTCUSD', 'ETHUSD', 'XRPUSD', 'ADAUSD', 'SOLUSD', 'DOTUSD', 'MATICUSD',
-            'MSTR', 'COIN', 'RIOT', 'MARA', 'CLSK', 'BITF', 'HUT', 'IREN'
-        ]
-        ibkr_symbols = [{'symbol': s, 'provider': 'IBKR'} for s in symbols]
-        return ibkr_symbols
 
     def check_market_and_refresh_cache(self):
         """
@@ -163,17 +155,11 @@ class StockScanner:
         is_open, status, next_time = is_market_open(fake_market)
         now = datetime.now(EST)
         
-        print(f"📊 Market Status: {status}")
+        print(f"Market Status: {status}")
         
-        # Détection de l'ouverture du marché
+        # Pas de cleanup automatique - fait à la main
         if is_open and self.market_was_closed:
-            if not fake_market:
-                print("🔔 Marché vient de s'ouvrir - Nettoyage complet du cache!")
-                self.cleanup_data()
-                os.makedirs(self.data_folder, exist_ok=True)
-                self.cache_refreshed_today = True
-            else:
-                print("🔔 Fake market mode - Pas de cleanup à l'ouverture")
+            print("Marché ouvert - Cleanup manuel requis si nécessaire")
             self.market_was_closed = False
             
         elif not is_open:
@@ -195,9 +181,9 @@ class StockScanner:
         try:
             result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
             if 'ibgateway' in result.stdout.lower():
-                status = "🟢 IBGateway: RUNNING"
+                status = "IBGateway: RUNNING"
             else:
-                status = "🔴 IBGateway: NOT RUNNING"
+                status = "IBGateway: NOT RUNNING"
             
             print(f"{status}")
             
@@ -208,16 +194,19 @@ class StockScanner:
                     trader = TradingManager('settings.json')
                     if trader.connect():
                         trader.display_positions_summary()
+                        total_pnl = trader.get_total_pnl()
+                        pnl_color = "+" if total_pnl >= 0 else ""
+                        print(f"Total P&L: ${pnl_color}{total_pnl:,.0f}")
                         trader.disconnect()
                 except Exception as e:
-                    pass  # Silencieux si erreur
+                    print(f"❌ Position summary error: {e}")
             
             return 'ibgateway' in result.stdout.lower()
         except Exception as e:
             print(f"❌ Error checking IBGateway status: {e}")
             return False
 
-    async def connect_ib(self):
+    def connect_ib(self):
         """Establish and maintain IB connection for realtime operations"""
         try:
             if self.ib is not None and self.ib.isConnected():
@@ -229,7 +218,7 @@ class StockScanner:
             client_id = realtime_config['ibkr_client_id']
             
             self.ib = IB()
-            await self.ib.connectAsync(host, port, clientId=client_id)
+            self.ib.connect(host, port, clientId=client_id)
             
             if self.ib.isConnected():
                 self.ib_connected = True
@@ -255,7 +244,7 @@ class StockScanner:
         """Async download using persistent IB connection"""
         try:
             if not self.ib_connected or not self.ib.isConnected():
-                if not await self.connect_ib():
+                if not self.connect_ib():
                     return None
                     
             contract = Stock(symbol, 'SMART', 'USD')
@@ -404,6 +393,7 @@ class StockScanner:
             return df
 
         except Exception as e:
+            print(f"❌ IBKR data download error for {symbol}: {e}")
             return None
 
     def _generate_combined_signals(self, df):
@@ -558,13 +548,7 @@ class StockScanner:
 
         if self.chart_symbol:
             watchlist = [{'symbol': self.chart_symbol, 'provider': 'IBKR'}]
-        elif self.nasdaq:
-            watchlist = self.get_nasdaq100_symbols()
-        elif self.crypto:
-            watchlist = self.get_crypto_symbols()
-        else:
-            print("❌ Error: Specify either --nasdaq, --crypto or --chart")
-            return
+        watchlist = self.get_nasdaq100_symbols()
 
         print(f"Backtest scanner started - {len(watchlist)} symbols (all_charts: {self.all_charts})\n")
 
@@ -652,20 +636,14 @@ class StockScanner:
 
             os.makedirs(self.data_folder, exist_ok=True)
 
-            if self.nasdaq:
-                watchlist = self.get_nasdaq100_symbols()
-            elif self.crypto:
-                watchlist = self.get_crypto_symbols()
-            else:
-                print("❌ Error: Specify either --nasdaq or --crypto")
-                return
+            watchlist = self.get_nasdaq100_symbols()
 
             print(f"Realtime scanner started - {len(watchlist)} symbols every {update_interval}s")
             print("Press Ctrl+C to stop\n")
             
             has_ibkr_symbols = any(item.get('provider', 'IBKR') == 'IBKR' for item in watchlist)
             if has_ibkr_symbols:
-                print("🔄 Establishing persistent IB connection...")
+                print("Establishing persistent IB connection...")
                 # Connection synchrone IBKR (pas de connexion persistante en mode sync)
                 pass
 
@@ -680,8 +658,15 @@ class StockScanner:
                     # Vérifier statut du marché et gérer le cache
                     market_is_open, market_status, next_time = self.check_market_and_refresh_cache()
                     
+                    # Pas de cleanup automatique - fait à la main
+                    if market_is_open and self.market_was_closed:
+                        print("Marché ouvert - Cleanup manuel requis si nécessaire")
+                        self.market_was_closed = False
+                    
                     # Si marché fermé, attendre plus longtemps
                     if not market_is_open:
+                        self.market_was_closed = True
+                            
                         if market_status == "Weekend":
                             print(f"💤 Weekend - Pause de 30 minutes")
                             time_module.sleep(1800)  # 30 minutes
@@ -816,7 +801,6 @@ class StockScanner:
                                 sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0) 
                                 sl_with_tolerance = sl_level * (1 - sl_tolerance / 100)
                                 
-                                print(f"🟢 BUY {symbol} @ ${current_price:.2f} - {signal_date} - SL: ${sl_with_tolerance:.2f}")
                                 
                                 if self.mode == 'realtime':
                                     # Import et initialise TradingManager pour exécution
@@ -851,7 +835,6 @@ class StockScanner:
                                 sl_tolerance = self.trading_settings.get('trading', {}).get('sl_tolerance_percent', 1.0)
                                 sl_with_tolerance = sl_level * (1 + sl_tolerance / 100)
                                 
-                                print(f"🔴 SELL {symbol} @ ${current_price:.2f} - {signal_date} - SL: ${sl_with_tolerance:.2f}")
                                 
                                 if self.mode == 'realtime':
                                     # Import et initialise TradingManager pour exécution
@@ -867,7 +850,6 @@ class StockScanner:
                                                 current_price_hint=current_price
                                             )
                                             trader.disconnect()
-                                            print(f"✅ SELL order executed: {result}")
                                         else:
                                             print("❌ Failed to connect to IBKR")
                                     except Exception as e:
@@ -967,8 +949,6 @@ if __name__ == '__main__':
     parser.add_argument('--backtest', action='store_true', help='Run in backtest mode')
     parser.add_argument('--chart', type=str, metavar='SYMBOL', help='Generate chart for symbol')
     parser.add_argument('--allcharts', action='store_true', help='Generate charts for all symbols')
-    parser.add_argument('--nasdaq', action='store_true', help='Scan NASDAQ 100')
-    parser.add_argument('--crypto', action='store_true', help='Scan Crypto (Ignored)')
     parser.add_argument('--cleanup', action='store_true', help='Delete data/ and chart/ files')
     parser.add_argument('--test_candle', type=int, metavar='N', help='Override test_candle setting')
     args = parser.parse_args()
@@ -978,5 +958,5 @@ if __name__ == '__main__':
         scanner.cleanup_data()
     else:
         is_backtest = args.backtest or bool(args.chart) or args.allcharts
-        scanner = StockScanner('settings.json', is_backtest=is_backtest, chart_symbol=args.chart, all_charts=args.allcharts, nasdaq=args.nasdaq, crypto=args.crypto, test_candle_override=args.test_candle)
+        scanner = StockScanner('settings.json', is_backtest=is_backtest, chart_symbol=args.chart, all_charts=args.allcharts, nasdaq=True, crypto=False, test_candle_override=args.test_candle)
         scanner.run()

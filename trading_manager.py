@@ -139,9 +139,9 @@ class TradingManager:
                     current_positions[symbol] = {
                         'shares': shares,
                         'avgCost': position.avgCost,
-                        'marketPrice': position.marketPrice,
-                        'marketValue': position.marketValue,
-                        'unrealizedPNL': position.unrealizedPNL
+                        'marketPrice': getattr(position, 'marketPrice', 0.0),
+                        'marketValue': getattr(position, 'marketValue', 0.0),
+                        'unrealizedPNL': getattr(position, 'unrealizedPNL', 0.0)
                     }
             
             return current_positions
@@ -189,7 +189,7 @@ class TradingManager:
         return positions.get(symbol, {}).get('shares', 0)
     
     def display_positions_summary(self):
-        """Affiche un résumé concis des positions ouvertes avec P&L"""
+        """Affiche un résumé concis des positions ouvertes avec P&L et ordres en attente"""
         if not self.connected:
             return
         
@@ -200,21 +200,144 @@ class TradingManager:
             if not active_positions:
                 return
             
+            # Récupérer tous les ordres en attente une seule fois
+            pending_orders = self.get_pending_orders()
+            pending_by_symbol = {}
+            for order in pending_orders:
+                symbol = order['symbol']
+                if symbol not in pending_by_symbol:
+                    pending_by_symbol[symbol] = []
+                pending_by_symbol[symbol].append(order)
+            
             print("📊 Positions ouvertes:")
             for position in active_positions:
                 symbol = position.contract.symbol
                 shares = int(position.position)
                 avg_cost = float(position.avgCost) if position.avgCost else 0
-                unrealized_pnl = float(position.unrealizedPNL) if position.unrealizedPNL else 0
-                market_value = float(position.marketValue) if position.marketValue else 0
                 
-                pnl_color = "🟢" if unrealized_pnl >= 0 else "🔴"
+                # Récupérer prix actuel depuis IBKR avec market data
+                try:
+                    contract = position.contract
+                    # Utiliser reqMktData pour obtenir prix temps réel
+                    ticker = self.ib.reqMktData(contract, '', False, False)
+                    self.ib.sleep(1)  # Courte pause pour les données
+                    
+                    current_price = None
+                    
+                    # Essayer différentes sources de prix dans l'ordre de préférence
+                    for price_attr in ['marketPrice', 'last', 'close', 'bid', 'ask']:
+                        price = getattr(ticker, price_attr, None)
+                        if price is not None and price != '' and str(price).lower() not in ['nan', 'none', '']:
+                            try:
+                                price_float = float(price)
+                                if price_float > 0:
+                                    current_price = price_float
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+                    
+                    # Si toujours pas de prix, essayer via portfolio
+                    if current_price is None:
+                        portfolio = self.ib.portfolio()
+                        for portfolio_item in portfolio:
+                            if portfolio_item.contract.symbol == symbol:
+                                if portfolio_item.marketPrice and portfolio_item.marketPrice > 0:
+                                    current_price = float(portfolio_item.marketPrice)
+                                    break
+                    
+                    # Dernier recours: avg_cost
+                    if current_price is None:
+                        current_price = avg_cost
+                    
+                    # Annuler la souscription pour éviter l'accumulation
+                    self.ib.cancelMktData(contract)
+                    
+                    market_value = abs(shares) * current_price
+                    unrealized_pnl = (current_price - avg_cost) * shares
+                    
+                except Exception as e:
+                    current_price = avg_cost
+                    market_value = abs(shares) * avg_cost
+                    unrealized_pnl = 0
+                
+                pnl_color = "+" if unrealized_pnl >= 0 else "-"
                 direction = "LONG" if shares > 0 else "SHORT"
                 
-                print(f"   {symbol}: {direction} {abs(shares)} @ ${avg_cost:.2f} = ${market_value:,.0f} {pnl_color}${unrealized_pnl:+,.0f}")
+                # Construire la ligne de base
+                position_line = f"   {symbol}: {direction} {abs(shares)} @ ${avg_cost:.2f} = ${market_value:,.0f} {pnl_color}${unrealized_pnl:+,.0f}"
+                
+                # Ajouter ordres en attente sur la même ligne si ils existent
+                if symbol in pending_by_symbol:
+                    pending_info = []
+                    for order in pending_by_symbol[symbol]:
+                        # Ignorer les ordres avec quantité 0
+                        if order['quantity'] > 0:
+                            status = "PENDING" if order['status'] in ['PendingSubmit', 'PreSubmitted', 'Submitted'] else "FILLED"
+                            pending_info.append(f"{status}:{order['action']}{order['quantity']}")
+                    if pending_info:  # Seulement ajouter si il y a des ordres valides
+                        position_line += f" [{', '.join(pending_info)}]"
+                
+                print(position_line)
                 
         except Exception as e:
             print(f"❌ Error displaying positions: {e}")
+    
+    def get_total_pnl(self):
+        """Calcule et retourne le P&L total de toutes les positions"""
+        if not self.connected:
+            return 0.0
+        
+        try:
+            positions = self.ib.positions()
+            active_positions = [p for p in positions if p.position != 0]
+            total_pnl = 0.0
+            
+            for position in active_positions:
+                symbol = position.contract.symbol
+                shares = int(position.position)
+                avg_cost = float(position.avgCost) if position.avgCost else 0
+                
+                try:
+                    contract = position.contract
+                    ticker = self.ib.reqMktData(contract, '', False, False)
+                    self.ib.sleep(0.5)  # Pause plus courte pour le calcul
+                    
+                    current_price = None
+                    for price_attr in ['marketPrice', 'last', 'close', 'bid', 'ask']:
+                        price = getattr(ticker, price_attr, None)
+                        if price is not None and price != '' and str(price).lower() not in ['nan', 'none', '']:
+                            try:
+                                price_float = float(price)
+                                if price_float > 0:
+                                    current_price = price_float
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+                    
+                    if current_price is None:
+                        portfolio = self.ib.portfolio()
+                        for portfolio_item in portfolio:
+                            if portfolio_item.contract.symbol == symbol:
+                                if portfolio_item.marketPrice and portfolio_item.marketPrice > 0:
+                                    current_price = float(portfolio_item.marketPrice)
+                                    break
+                    
+                    if current_price is None:
+                        current_price = avg_cost
+                    
+                    self.ib.cancelMktData(contract)
+                    unrealized_pnl = (current_price - avg_cost) * shares
+                    total_pnl += unrealized_pnl
+                    
+                except Exception:
+                    # Si erreur, ignorer cette position pour le calcul total
+                    pass
+            
+            return total_pnl
+            
+        except Exception as e:
+            print(f"❌ Error calculating total PnL: {e}")
+            return 0.0
     
     def can_trade(self, symbol, action):
         """
@@ -224,12 +347,10 @@ class TradingManager:
         pending_orders = self.get_pending_orders(symbol)
         
         
-        # Vérifier les positions existantes
+        # Vérifier les positions existantes (silent check)
         if action == 'BUY' and current_shares > 0:
-            print(f"⚠️ Position longue existante {symbol}: {current_shares} actions")
             return False
         elif action == 'SELL' and current_shares < 0:
-            print(f"⚠️ Position courte existante {symbol}: {current_shares} actions")
             return False
         
         # Vérifier s'il y a des ordres en attente (n'importe quel type)
@@ -720,7 +841,7 @@ class TradingManager:
             
             parent_order.tif = self.trading_settings['trading']['order_settings']['time_in_force']
             parent_order.outsideRth = self.trading_settings['trading']['order_settings']['outside_rth']
-            parent_order.transmit = False  # Ne pas transmettre immédiatement
+            parent_order.transmit = self.trading_settings['trading']['enabled']  # Transmettre si trading activé
             
             # Créer l'ordre stop-loss (ordre enfant)
             sl_action = 'SELL' if action == 'BUY' else 'BUY'  # Action inverse

@@ -45,18 +45,21 @@ new_scan/
 
 ### Development/Testing Commands
 ```bash
-# Run backtest mode (uses Yahoo Finance data)
+# Run backtest mode (uses Yahoo Finance data) - scans NASDAQ 100
 python3 new_scan.py --backtest
 
 # Generate chart for specific symbol
 python3 new_scan.py --chart AAPL
 
-# Run real-time scanning (requires IBKR connection)
+# Run real-time scanning (requires IBKR connection) - scans NASDAQ 100
 python3 new_scan.py
 
 # Clean cached data
 python3 new_scan.py --cleanup
 ```
+
+### Stock Coverage
+The system automatically scans **NASDAQ 100 stocks** by default. No additional flags required.
 
 ### Dependencies
 Install requirements:
@@ -170,13 +173,16 @@ The `squeeze_momentum_analyzer.py` includes calibration factors optimized to mat
 - **Exchange-Managed Stops**: 24/7 protection without script dependency
 
 ### Stop-Loss Logic
-- **BUY positions**: SL = min(signal_low, previous_low)
-- **SELL positions**: SL = max(signal_high, previous_high)
+- **BUY positions**: SL = min(signal_low, previous_low)  
+- **SELL positions**: SL = max(previous_high, pre_previous_high) - Uses 2 candles before signal
 
 ### Key Trading Functions
 - `smart_trade_with_bracket()`: Execute bracket order with automatic stop-loss
 - `calculate_sl_level()`: Calculate stop-loss based on price action
 - `get_account_equity()`: Monitor account balance and position sizing
+- `can_trade()`: Check positions and pending orders to prevent duplicates
+- `get_pending_orders()`: Monitor active/pending orders at IBKR
+- `display_positions_summary()`: Show current positions with P&L
 
 ## Testing Framework
 
@@ -215,8 +221,10 @@ python3 test_*.py
 - EST timezone handling with ZoneInfo
 
 📋 **Recent Improvements:**
-- Added `is_market_open()` function for market status detection
-- Implemented `check_market_and_refresh_cache()` for automatic cache management
-- Enhanced resource optimization with variable scan intervals
-- Fixed NaN price handling for market closed scenarios
-- Integrated existing `cleanup_data()` method for cache refresh
+- Added `is_market_open()` function with fake_market mode support
+- Implemented automatic cache management with intelligent cleanup
+- Enhanced duplicate order prevention with pending order checks
+- Fixed stop-loss calculation to use correct candle references
+- Simplified system to focus on NASDAQ 100 (removed crypto options)
+- Added position summary display with real-time P&L
+- Integrated comprehensive order status monitoring

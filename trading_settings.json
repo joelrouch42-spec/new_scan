@@ -1,13 +1,13 @@
 {
   "trading": {
     "enabled": true,
-    "fake_market": true,
+    "fake_market": false,
     "verbose": false,
-    "trade_percent": 1,
-    "sl_tolerance_percent": 1,
+    "trade_percent": 1.0,
+    "sl_tolerance_percent": 1.0,
     "order_settings": {
       "order_type": "MARKET",
-      "time_in_force": "DAY",
+      "time_in_force": "GTC",
       "outside_rth": false
     }
   },
